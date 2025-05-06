@@ -308,7 +308,8 @@ enum acer_wmi_predator_v4_oc {
  #define ACER_CAP_FAN_SPEED_READ		BIT(11)
  #define ACER_CAP_PREDATOR_SENSE		BIT(12)
  #define ACER_CAP_NITRO_SENSE BIT(13)
- 
+ #define ACER_CAP_NITRO_SENSE_V4		BIT(14)
+
  /*
   * Interface type flags
   */
@@ -332,6 +333,7 @@ enum acer_wmi_predator_v4_oc {
  static u8 commun_fn_key_number;
  static bool cycle_gaming_thermal_profile = true;
  static bool predator_v4;
+ static bool nitro_v4;
  static u64 supported_sensors;
  
  module_param(mailled, int, 0444);
@@ -342,6 +344,7 @@ enum acer_wmi_predator_v4_oc {
  module_param(ec_raw_mode, bool, 0444);
  module_param(cycle_gaming_thermal_profile, bool, 0644);
  module_param(predator_v4, bool, 0444);
+ module_param(nitro_v4, bool, 0444);
  MODULE_PARM_DESC(mailled, "Set initial state of Mail LED");
  MODULE_PARM_DESC(brightness, "Set initial LCD backlight brightness");
  MODULE_PARM_DESC(threeg, "Set initial state of 3G hardware");
@@ -352,6 +355,8 @@ enum acer_wmi_predator_v4_oc {
      "Set thermal mode key in cycle mode. Disabling it sets the mode key in turbo toggle mode");
  MODULE_PARM_DESC(predator_v4,
      "Enable features for predator laptops that use predator sense v4");
+ MODULE_PARM_DESC(nitro_v4,
+    "Enable features for nitro laptops that use nitro sense v4");
  
  struct acer_data {
      int mailled;
@@ -402,6 +407,7 @@ enum acer_wmi_predator_v4_oc {
      u8 cpu_fans;
      u8 gpu_fans;
      u8 predator_v4;
+     u8 nitro_v4;
      u8 nitro_sense;
      u8 four_zone_kb;
  };
@@ -426,6 +432,10 @@ enum acer_wmi_predator_v4_oc {
      if (quirks->predator_v4)
          interface->capability |= ACER_CAP_PLATFORM_PROFILE |
                       ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
+     
+     if (quirks->nitro_v4)
+         interface->capability |= ACER_CAP_PLATFORM_PROFILE |
+                 ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE | ACER_CAP_NITRO_SENSE_V4;
  }
  
  static int __init dmi_matched(const struct dmi_system_id *dmi)
@@ -470,6 +480,11 @@ enum acer_wmi_predator_v4_oc {
     .four_zone_kb = 1,
  };
  
+ static struct quirk_entry quirk_acer_nitro_an16_41 = {
+    .nitro_v4 = 1,
+    .four_zone_kb = 1,
+ };
+
  static struct quirk_entry quirk_acer_nitro = {
      .nitro_sense = 1,
  };
@@ -491,6 +506,10 @@ enum acer_wmi_predator_v4_oc {
      .wireless = 3,
  };
  
+ static struct quirk_entry quirk_acer_nitro_v4 = {
+    .nitro_v4 = 1,
+ };
+
  /* The Aspire One has a dummy ACPI-WMI interface - disable it */
  static const struct dmi_system_id acer_blacklist[] __initconst = {
      {
@@ -537,6 +556,15 @@ enum acer_wmi_predator_v4_oc {
   * that those machines are supported by acer-wmi driver.
   */
  static const struct dmi_system_id acer_quirks[] __initconst = {
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Nitro AN16-41",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN16-41"),
+         },
+         .driver_data = &quirk_acer_nitro_an16_41,
+     },
      {
          .callback = dmi_matched,
          .ident = "Acer Nitro ANV15-41",
@@ -846,6 +874,8 @@ enum acer_wmi_predator_v4_oc {
  {
      if (predator_v4) {
          quirks = &quirk_acer_predator_v4;
+     } else if (nitro_v4) {
+         quirks = &quirk_acer_nitro_v4;
      } else if (!force_series) {
          dmi_check_system(acer_quirks);
          dmi_check_system(non_acer_quirks);
@@ -2206,7 +2236,7 @@ enum acer_wmi_predator_v4_oc {
  
  static int acer_platform_profile_setup(struct platform_device *device)
  {
-     if (quirks->predator_v4 || quirks->nitro_sense) {
+     if (quirks->predator_v4 || quirks->nitro_sense || quirks->nitro_v4) {
          platform_profile_device = devm_platform_profile_register(
              &device->dev, "acer-wmi", NULL, &acer_predator_v4_platform_profile_ops);
          if (IS_ERR(platform_profile_device))
@@ -2223,7 +2253,7 @@ enum acer_wmi_predator_v4_oc {
       * This mode key can rotate each mode or toggle turbo mode.
       * On battery, only ECO and BALANCED mode are available.
       */
-     if (quirks->predator_v4 || quirks->nitro_sense) {
+     if (quirks->predator_v4 || quirks->nitro_sense || quirks->nitro_v4) {
          u8 current_tp;
          int tp, err;
          u64 on_AC;
@@ -2582,9 +2612,9 @@ enum acer_wmi_predator_v4_oc {
          break;
      case WMID_GAMING_TURBO_KEY_EVENT:
         pr_info("pressed turbo button - %d\n", return_value.key_num);
-         if (return_value.key_num == 0x4)
+         if (return_value.key_num == 0x4  && !has_cap(ACER_CAP_NITRO_SENSE_V4))
              acer_toggle_turbo();
-         if (return_value.key_num == 0x5 && has_cap(ACER_CAP_PLATFORM_PROFILE))
+         if ((return_value.key_num == 0x5 || (return_value.key_num == 0x4 && has_cap(ACER_CAP_NITRO_SENSE_V4))) && has_cap(ACER_CAP_PLATFORM_PROFILE))
              acer_thermal_profile_change();
          break;
      case WMID_AC_EVENT:
@@ -3484,6 +3514,9 @@ enum acer_wmi_predator_v4_oc {
      .name = "predator_sense", .attrs = predator_sense_attrs
  };
  
+ static struct attribute_group nitro_sense_v4_attr_group = {
+     .name = "nitro_sense", .attrs = predator_sense_attrs
+ };
  /* nitro sense attributes */
  static struct attribute *nitro_sense_attrs[] = {
      &fan_speed.attr,
@@ -3968,13 +4001,18 @@ enum acer_wmi_predator_v4_oc {
              goto error_platform_profile;
      }
  
-     if (has_cap(ACER_CAP_PREDATOR_SENSE)){
+     if (has_cap(ACER_CAP_PREDATOR_SENSE) & !has_cap(ACER_CAP_NITRO_SENSE_V4)) {
          err = sysfs_create_group(&device->dev.kobj, &preadtor_sense_attr_group);
          if (err)
              goto error_predator_sense;
          acer_predator_state_load();
      }
- 
+     if (has_cap(ACER_CAP_PREDATOR_SENSE) & has_cap(ACER_CAP_NITRO_SENSE_V4)) {
+         err = sysfs_create_group(&device->dev.kobj, &nitro_sense_v4_attr_group);
+         if (err)
+             goto error_predator_sense;
+         acer_predator_state_load();
+     }
      if (has_cap(ACER_CAP_NITRO_SENSE)){
          err = sysfs_create_group(&device->dev.kobj, &nitro_sense_attr_group);
          if (err)
@@ -4022,8 +4060,12 @@ enum acer_wmi_predator_v4_oc {
          acer_led_exit();
      if (has_cap(ACER_CAP_BRIGHTNESS))
          acer_backlight_exit();
-     if (has_cap(ACER_CAP_PREDATOR_SENSE)){
+     if (has_cap(ACER_CAP_PREDATOR_SENSE) & !has_cap(ACER_CAP_NITRO_SENSE_V4)) {
          sysfs_remove_group(&device->dev.kobj, &preadtor_sense_attr_group);
+         acer_predator_state_save();
+     }
+     if (has_cap(ACER_CAP_PREDATOR_SENSE) & has_cap(ACER_CAP_NITRO_SENSE_V4)) {
+         sysfs_remove_group(&device->dev.kobj, &nitro_sense_v4_attr_group);
          acer_predator_state_save();
      }
      if(quirks->four_zone_kb){

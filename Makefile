@@ -31,6 +31,8 @@ uninstall:
 		echo "Group linuwu_sense does not exist."; \
 	fi
 	@sudo rm -f /etc/tmpfiles.d/$(MODNAME).conf
+	@sudo rm -f $(MDIR)/$(MODNAME).ko
+	@sudo depmod -a
 	@echo "Uninstalled $(MODNAME) and cleaned up related configuration."
 
 install: all
