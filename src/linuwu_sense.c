@@ -490,6 +490,11 @@ enum acer_wmi_predator_v4_oc {
     .four_zone_kb = 1,
  };
 
+ static struct quirk_entry quirk_acer_nitro_an515_58 = {
+    .nitro_sense = 1,
+    .four_zone_kb = 1,
+ };
+
  static struct quirk_entry quirk_acer_nitro = {
      .nitro_sense = 1,
  };
@@ -569,6 +574,15 @@ enum acer_wmi_predator_v4_oc {
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN16-43"),
          },
          .driver_data = &quirk_acer_nitro_an16_43,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Nitro AN515-58",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-58"),
+         },
+         .driver_data = &quirk_acer_nitro_an515_58,
      },
      {
          .callback = dmi_matched,
@@ -3533,10 +3547,12 @@ enum acer_wmi_predator_v4_oc {
  };
  /* nitro sense attributes */
  static struct attribute *nitro_sense_attrs[] = {
+     &lcd_override.attr,
      &fan_speed.attr,
      &battery_limiter.attr,
      &battery_calibration.attr,
      &usb_charging.attr,
+     &backlight_timeout.attr,
      NULL
  }; 
  static struct attribute_group nitro_sense_attr_group = {
