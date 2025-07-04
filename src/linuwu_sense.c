@@ -488,7 +488,7 @@ enum acer_wmi_predator_v4_oc {
     .four_zone_kb = 1,
  };
 
-  static struct quirk_entry quirk_acer_nitro_an16_43 = {
+static struct quirk_entry quirk_acer_nitro_an16_43 = {
     .nitro_v4 = 1,
     .four_zone_kb = 1,
  };
@@ -499,7 +499,17 @@ enum acer_wmi_predator_v4_oc {
  };
 
 
- static struct quirk_entry quirk_acer_nitro = {
+static struct quirk_entry quirk_acer_nitro_an515_54 = {
+    .brightness = -1, /* Has 3 levels in official, enabling timeout disbales lights entirely until reboot. Disabled for now */
+    .turbo = 1, /* Doesn't seem to do anything with the GPU undetectable. */
+    .cpu_fans = 1,
+    .gpu_fans = 1,
+    .nitro_v4 = 1, 
+	/* Doesnt seem to Detect 1650 GPU. References MESA Drivers instead. Lables Model as Intel Host Bridge. 
+ 	Cant Read GPU Temp so Auto doesnt work for GPU, Set Speed to Manual for now. */
+ };
+
+static struct quirk_entry quirk_acer_nitro = {
      .nitro_sense = 1,
  };
  
@@ -614,6 +624,15 @@ enum acer_wmi_predator_v4_oc {
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV15-51"),
          },
          .driver_data = &quirk_acer_nitro,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Nitro AN515-54",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-54"),
+         },
+         .driver_data = &quirk_acer_nitro_an515_54,
      },
      {
          .callback = dmi_matched,
