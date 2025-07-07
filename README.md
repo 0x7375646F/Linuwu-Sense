@@ -71,11 +71,11 @@ This feature turns off the keyboard RGB after 30 seconds of idle mode.
 
 To check the current status, use:
 
-`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/backlight_timeout`
+`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/backlight_timeout`
 
 To change the state, use:
 
-`echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/backlight_timeout`
+`echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/backlight_timeout`
 
 ---
 
@@ -88,11 +88,11 @@ This function calibrates your battery to provide a more accurate percentage read
 
 To check the current status:
 
-`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/battery_calibration`
+`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/battery_calibration`
 
 To change the state:
 
-`echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/battery_calibration`
+`echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/battery_calibration`
 
 ---
 
@@ -105,11 +105,11 @@ Limits battery charging to 80%, preserving battery health for laptops primarily 
 
 To check the current status:
 
-`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/battery_limiter`
+`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/battery_limiter`
 
 To change the state:
 
-`echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/battery_limiter`
+`echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/battery_limiter`
 
 ---
 
@@ -122,11 +122,11 @@ Enables or disables custom boot animation and sound.
 
 To check the current status:
 
-`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/boot_animation_sound`
+`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/boot_animation_sound`
 
 To change the state:
 
-`echo 0 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/boot_animation_sound`
+`echo 0 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/boot_animation_sound`
 
 ---
 
@@ -141,7 +141,7 @@ Controls the CPU and GPU fan speeds.
 
 Example (set CPU to 50 and GPU to 70):
 
-`echo 50,70 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/fan_speed`
+`echo 50,70 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/fan_speed`
 
 ---
 
@@ -154,11 +154,11 @@ Reduces LCD latency and minimizes ghosting.
 
 To check the current status:
 
-`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/lcd_override`
+`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/lcd_override`
 
 To change the state:
 
-`echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/lcd_override`
+`echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/lcd_override`
 
 ---
 
@@ -173,11 +173,11 @@ Allows the USB charging port to provide power even when the laptop is off.
 
 To check the current status:
 
-`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/usb_charging`
+`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/usb_charging`
 
 To change the state:
 
-`echo 20 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/usb_charging`
+`echo 20 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/*_sense/usb_charging`
 
 ---
 ## 💻 Keyboard Configuration 
