@@ -9,7 +9,7 @@ To begin, identify your current kernel version:
 uname -r
 ```
 
-Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel version (6.12,6.13 ([previous code base](https://github.com/0x7375646F/Linuwu-Sense/tree/v6.13)),6.14) zen. 
+Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel versions (6.12, 6.13 ([previous code base](https://github.com/0x7375646F/Linuwu-Sense/tree/v6.13)), 6.14) zen. 
 For Arch Linux:
 ```bash
 sudo pacman -S linux-headers
@@ -27,7 +27,7 @@ To Uninstall:
 make uninstall
 ```
 > **⚠️ Warning!**
-> ## Use at your own risk! This driver is independently developed through reverse engineering the official PredatorSense app, without any involvement from Acer. It interacts with low-level WMI methods, which may not be tested across all models.
+> ## Use at your own risk! This driver is being independently developed through reverse engineering the official PredatorSense app, without any involvement from Acer. It interacts with low-level WMI methods, which may not be tested across all models.
 
 ## 🛠️ Usage
 # Example Usage and Configuration
@@ -46,7 +46,7 @@ Here is how to interact with the Virtual Filesystems (VFS) mounted in this path:
 
 ### **0. Thermal Profiles (Especially for Nitro users who don't have switch key) 🚀**
 
-Some Acer Nitro laptops don't come up with the thermal profile switch button in this case we manually need to set it:
+Some Acer Nitro laptops don't come with the thermal profile switch button, so it needs to be set manually:
 
 To probe the current thermal profile:
 
@@ -56,15 +56,15 @@ To check the supported thermal profiles:
 
 `cat /sys/firmware/acpi/platform_profile_choices`
 
-To switch the platform profile:
+To switch the thermal profile to balanced:
 
 `echo balanced | sudo tee /sys/firmware/acpi/platform_profile`
 
-Replace balanced with a supported profile of your choosing.
+You can replace 'balanced' with a supported profile of your choosing.
 
 #### **1. Backlight Timeout ⏰**
 
-This feature turns off the keyboard RGB after 30 seconds of idle mode.
+This feature automatically disables the keyboard backlight after 30 seconds of inactivity.
 
 - **0** – Disabled
 - **1** – Enabled
@@ -98,7 +98,7 @@ To change the state:
 
 #### **3. Battery Limiter ⚡**
 
-Limits battery charging to 80%, preserving battery health for laptops primarily used while plugged into AC power.
+Limits battery charging to 80%, preserving battery health for laptops (especially useful when primarily used while plugged into AC power).
 
 - **1** – Enabled
 - **0** – Disabled
@@ -256,14 +256,14 @@ The thermal and fan profiles will be saved and loaded on each reboot, ensuring t
 - [GUI LinuwuSense By KumarVivek](https://github.com/kumarvivek1752/Linuwu-Sense-GUI/tree/main)
 
 ## 🚧 Roadmap:
-- [x] GUI for keyboard rgb controls to make it noob friendly.
+- [x] GUI for keyboard RGB controls to make it noob friendly.
 - [x] Module Persistence After Reboot.
 - [ ] Custom Boot Logo Feature Support.
-- [ ] Improve device support (Currently only the PHN16-71 is fully supported).
+- [ ] Improve device support (currently only the PHN16-71 is fully supported).
 
 ## License
 GNU General Public License v3
 
 ### 💖 Donations
-Donations are completely optional but you can show your love for open-source development and motivate me to add more features to this project!
+Donations are completely optional but you can show your love for open-source development and help motivate me to add more features to this project!
 USDT (BEP20 - BNB Smart Chain): 0xDA7aa42B9Fc3041F20f4Ec828A70E9bDD54A6822
