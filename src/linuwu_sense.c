@@ -471,6 +471,14 @@ enum acer_wmi_predator_v4_oc {
      .turbo = 1,
      .cpu_fans = 1,
      .gpu_fans = 1,
+};
+
+ static struct quirk_entry quirk_acer_predator_ph315_54 = {
+     .predator_v4 = 1,
+     .four_zone_kb = 1,
+     .turbo = 1,
+     .cpu_fans = 1,
+     .gpu_fans = 1,
  };
  
  static struct quirk_entry quirk_acer_predator_phn16_71 = {
@@ -754,6 +762,15 @@ enum acer_wmi_predator_v4_oc {
              DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH315-53"),
          },
          .driver_data = &quirk_acer_predator_ph315_53,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PH315-54",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH315-54"),
+         },
+         .driver_data = &quirk_acer_predator_ph315_54,
      },
      {
          .callback = dmi_matched,
