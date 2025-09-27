@@ -3618,13 +3618,13 @@ enum acer_wmi_predator_v4_oc {
  
  /* PH315-52 Legacy Predator - testing all features */
  static struct attribute *predator_legacy_attrs[] = {
-     &fan_speed.attr,              // ✅ WORKING - Fan control
-     &usb_charging.attr,           // ✅ WORKING - USB charging control  
-     &lcd_override.attr,           // ✅ WORKING - LCD brightness override
-     &boot_animation_sound.attr,   // ✅ WORKING - Boot animation and sound
-     &battery_limiter.attr,        // 🔍 TESTING - Battery limiter
-     &battery_calibration.attr,    // 🔍 TESTING - Battery calibration
-     &backlight_timeout.attr,      // 🔍 TESTING - Backlight timeout
+     &fan_speed.attr,                 // DONE! 
+     &usb_charging.attr,              // DONE!   
+     &lcd_override.attr,              // DONE! 
+     &boot_animation_sound.attr,      // DONE! 
+     &backlight_timeout.attr,         // DONE! 
+     &battery_limiter.attr,           // NOT-SUPPORTED FOR THIS MODEL (PH315-52)
+     &battery_calibration.attr,       // NOT-SUPPORTED FOR THIS MODEL (PH315-52)
      NULL
  };
  
