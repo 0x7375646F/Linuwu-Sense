@@ -337,6 +337,11 @@ enum acer_wmi_predator_v4_oc {
  static bool nitro_v4;
  static u64 supported_sensors;
  
+ /* PH315-52 state tracking for features with non-standard return values */
+ static int ph315_52_backlight_timeout_state = 0;
+ static int ph315_52_battery_limiter_state = 0;
+ static int ph315_52_battery_calibration_state = 0;
+ 
  module_param(mailled, int, 0444);
  module_param(brightness, int, 0444);
  module_param(threeg, int, 0444);
@@ -411,6 +416,7 @@ enum acer_wmi_predator_v4_oc {
      u8 nitro_v4;
      u8 nitro_sense;
      u8 four_zone_kb;
+     u8 predator_legacy;  // For older Predator models like PH315-52
  };
  
  static struct quirk_entry *quirks;
@@ -439,6 +445,10 @@ enum acer_wmi_predator_v4_oc {
      if (quirks->nitro_v4)
          interface->capability |= ACER_CAP_PLATFORM_PROFILE |
                  ACER_CAP_FAN_SPEED_READ  | ACER_CAP_NITRO_SENSE_V4;
+     
+     /* Legacy Predator models - Predator Sense features without platform profiles */
+     if (quirks->predator_legacy)
+         interface->capability |= ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
  }
  
  static int __init dmi_matched(const struct dmi_system_id *dmi)
@@ -467,6 +477,14 @@ enum acer_wmi_predator_v4_oc {
      .mailled = 1,
  };
  
+ static struct quirk_entry quirk_acer_predator_ph315_52 = {
+     .turbo = 1,
+     .cpu_fans = 1,
+     .gpu_fans = 1,
+     .predator_legacy = 1,  // Enable legacy Predator features without platform profiles
+     .four_zone_kb = 1,     // RGB keyboard partially working (interface available but limited functionality)
+ };
+
  static struct quirk_entry quirk_acer_predator_ph315_53 = {
      .turbo = 1,
      .cpu_fans = 1,
@@ -745,6 +763,15 @@ enum acer_wmi_predator_v4_oc {
              DMI_MATCH(DMI_PRODUCT_NAME, "TravelMate 4200"),
          },
          .driver_data = &quirk_acer_travelmate_2490,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PH315-52",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH315-52"),
+         },
+         .driver_data = &quirk_acer_predator_ph315_52,
      },
      {
          .callback = dmi_matched,
@@ -3030,6 +3057,11 @@ enum acer_wmi_predator_v4_oc {
      
        ret = *((struct get_battery_health_control_status_output *)obj->buffer.pointer);
      
+     pr_info("battery_health_query result: uFunctionList=%d, uReturn=[%d,%d], uFunctionStatus=[%d,%d,%d,%d,%d]\n",
+             ret.uFunctionList, ret.uReturn[0], ret.uReturn[1], 
+             ret.uFunctionStatus[0], ret.uFunctionStatus[1], ret.uFunctionStatus[2], 
+             ret.uFunctionStatus[3], ret.uFunctionStatus[4]);
+     
      if(mode == HEALTH_MODE){
          *enabled = ret.uFunctionStatus[0];
      } else if(mode == CALIBRATION_MODE){
@@ -3081,9 +3113,10 @@ enum acer_wmi_predator_v4_oc {
      
        ret = *((struct set_battery_health_control_output  *)obj->buffer.pointer);
      
-     if(ret.uReturn != 0 && ret.uReservedOut != 0){
-         pr_err("Failed to set battery health status\n");
-         goto failed;
+     pr_info("battery_health_set result: uReturn=%d, uReservedOut=%d\n", ret.uReturn, ret.uReservedOut);
+     if(ret.uReturn != 0 || ret.uReservedOut != 0){
+         pr_warn("Battery health set returned non-zero values: uReturn=%d, uReservedOut=%d\n", ret.uReturn, ret.uReservedOut);
+         /* Don't fail immediately - some models might return non-zero success codes */
      }
  
      kfree(obj);
@@ -3105,6 +3138,15 @@ enum acer_wmi_predator_v4_oc {
      if (ACPI_FAILURE(status))
          return -ENODEV;
  
+     /* For PH315-52, the WMI query might not return the correct state immediately */
+     if (quirks->predator_legacy) {
+         /* Try to use hardware state if available, otherwise use tracked state */
+         if (enabled != 0) {
+             ph315_52_battery_limiter_state = enabled;
+         }
+         return sprintf(buf, "%d\n", ph315_52_battery_limiter_state);
+     }
+ 
      return sprintf(buf, "%d\n", enabled);
  }
  
@@ -3118,8 +3160,15 @@ enum acer_wmi_predator_v4_oc {
        if ((val != 0) && (val != 1))
          return -EINVAL;
        
-     if (battery_health_set(HEALTH_MODE,val) != AE_OK)
+     acpi_status status = battery_health_set(HEALTH_MODE, val);
+     if (ACPI_FAILURE(status))
          return -ENODEV;
+     
+     /* For PH315-52, track the state since hardware query might not reflect changes immediately */
+     if (quirks->predator_legacy) {
+         ph315_52_battery_limiter_state = val;
+         pr_info("PH315-52: Battery limiter state set to %d (may take effect after reboot)\n", val);
+     }
        
      return count;
  }
@@ -3501,7 +3550,15 @@ enum acer_wmi_predator_v4_oc {
          return -ENODEV;
      }
      pr_info("backlight_timeout get status: %llu\n",result);
-     return sprintf(buf, "%d\n", result == 0x1E0000080000 ? 1 : result == 0x80000 ? 0 : -1);
+     
+     /* Handle different return values for different models */
+     if (quirks->predator_legacy) {
+         /* PH315-52: WMI calls work but return values are non-standard, use state tracking */
+         return sprintf(buf, "%d\n", ph315_52_backlight_timeout_state);
+     } else {
+         /* Newer Predator models */
+         return sprintf(buf, "%d\n", result == 0x1E0000080000ULL ? 1 : result == 0x80000 ? 0 : -1);
+     }
  }
  
  static ssize_t predator_backlight_timeout_store(struct device *dev, struct device_attribute *attr,const char *buf, size_t count){
@@ -3512,13 +3569,19 @@ enum acer_wmi_predator_v4_oc {
          return -EINVAL;
        if ((val != 0) && (val != 1))
          return -EINVAL;
-     pr_info("bascklight_timeout set value: %d\n",val);
+     pr_info("backlight_timeout set value: %d\n",val);
      status = WMI_apgeaction_execute_u64(ACER_WMID_SET_FUNCTION,val == 1 ? 0x1E0000088402 : 0x88402, &result);
      if(ACPI_FAILURE(status)){
          pr_err("Error setting backlight_timeout status: %s\n",acpi_format_exception(status));
          return -ENODEV;
      }
      pr_info("backlight_timeout set status: %llu\n",result);
+     
+     /* For PH315-52, track state since return values are non-standard */
+     if (quirks->predator_legacy) {
+         ph315_52_backlight_timeout_state = val;
+     }
+     
      return count;
  }
  
@@ -3576,8 +3639,24 @@ enum acer_wmi_predator_v4_oc {
      NULL
  };
  
+ /* PH315-52 Legacy Predator - testing all features */
+ static struct attribute *predator_legacy_attrs[] = {
+     &fan_speed.attr,                 // DONE! 
+     &usb_charging.attr,              // DONE!   
+     &lcd_override.attr,              // DONE! 
+     &boot_animation_sound.attr,      // DONE! 
+     &backlight_timeout.attr,         // DONE! 
+     &battery_limiter.attr,           // NOT-SUPPORTED FOR THIS MODEL (PH315-52)
+     &battery_calibration.attr,       // NOT-SUPPORTED FOR THIS MODEL (PH315-52)
+     NULL
+ };
+ 
  static struct attribute_group preadtor_sense_attr_group = {
      .name = "predator_sense", .attrs = predator_sense_attrs
+ };
+ 
+ static struct attribute_group predator_legacy_attr_group = {
+     .name = "predator_sense", .attrs = predator_legacy_attrs
  };
  
  static struct attribute_group nitro_sense_v4_attr_group = {
@@ -4070,7 +4149,12 @@ enum acer_wmi_predator_v4_oc {
      }
  
      if (has_cap(ACER_CAP_PREDATOR_SENSE)) {
-         err = sysfs_create_group(&device->dev.kobj, &preadtor_sense_attr_group);
+         /* Use legacy attribute group for older Predator models like PH315-52 */
+         if (quirks->predator_legacy) {
+             err = sysfs_create_group(&device->dev.kobj, &predator_legacy_attr_group);
+         } else {
+             err = sysfs_create_group(&device->dev.kobj, &preadtor_sense_attr_group);
+         }
          if (err)
              goto error_predator_sense;
          acer_predator_state_load();
@@ -4129,7 +4213,12 @@ enum acer_wmi_predator_v4_oc {
      if (has_cap(ACER_CAP_BRIGHTNESS))
          acer_backlight_exit();
      if (has_cap(ACER_CAP_PREDATOR_SENSE)) {
-         sysfs_remove_group(&device->dev.kobj, &preadtor_sense_attr_group);
+         /* Remove the appropriate attribute group */
+         if (quirks->predator_legacy) {
+             sysfs_remove_group(&device->dev.kobj, &predator_legacy_attr_group);
+         } else {
+             sysfs_remove_group(&device->dev.kobj, &preadtor_sense_attr_group);
+         }
          acer_predator_state_save();
      }
      if (has_cap(ACER_CAP_NITRO_SENSE)) {

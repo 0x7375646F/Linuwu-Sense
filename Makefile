@@ -23,6 +23,8 @@ uninstall:
 	@sudo systemctl daemon-reload
 	@sudo rmmod $(MODNAME) 2>/dev/null || true
 	@sudo modprobe acer_wmi
+	@echo "Removing Linuwu-Sense control script..."
+	@sudo rm -f /usr/local/bin/linuwu-sense
 	@echo "Removing current user from linuwu_sense group if exists..."
 	@if getent group linuwu_sense >/dev/null; then \
 		sudo gpasswd -d $(REAL_USER) linuwu_sense || true; \
@@ -48,6 +50,9 @@ install: all
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable linuwu_sense.service
 	@sudo systemctl start linuwu_sense.service
+	@echo "Installing Linuwu-Sense control script..."
+	@sudo install -m 755 Linuwu-Sense.py /usr/local/bin/linuwu-sense
+	@echo "Linuwu-Sense control script installed as 'linuwu-sense' command."
 	@echo "Setting up group and permissions..."
 	@echo "Detected user: $(REAL_USER)"
 	@if ! getent group linuwu_sense >/dev/null; then \
