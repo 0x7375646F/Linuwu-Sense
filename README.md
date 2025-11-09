@@ -1,5 +1,27 @@
+# Linuwu-Sense: Acer Gaming Laptop Control
+
+Control your Acer Predator or Nitro gaming laptop's hardware features including RGB keyboard, performance profiles, fan speeds, and battery management.
+
+## 🪟 Windows 11 Version Available!
+
+**NEW**: A complete Windows 11 port is now available! Control your Acer laptop on Windows with a modern GUI application.
+
+👉 **[Go to Windows 11 Version →](Windows11/README.md)**
+
+Features include:
+- 🎨 4-Zone RGB Keyboard Control
+- ⚡ Performance Profiles (Quiet/Balanced/Performance/Turbo)
+- 🌀 CPU & GPU Fan Control
+- 🔋 Battery Health Management
+- 💻 Modern Windows 11 UI
+- 🎮 Full Predator and Nitro Series Support
+
+---
+
+## 🐧 Linux Kernel Module (Original)
+
 # Unofficial Linux Kernel Module for Acer Gaming RGB Keyboard Backlight and Turbo Mode (Acer Predator , Nitro)
-The code base is still in its early stages, as I’ve just started working on developing this kernel module. It's a bit messy at the moment, but I’m hopeful that, with your help, we can collaborate to improve its structure and make it more organized over time.
+The code base is still in its early stages, as I've just started working on developing this kernel module. It's a bit messy at the moment, but I'm hopeful that, with your help, we can collaborate to improve its structure and make it more organized over time.
 
 Inspired by [acer-predator-turbo](https://github.com/JafarAkhondali/acer-predator-turbo-and-rgb-keyboard-linux-module), which has a similar goal, this project was born out of my own challenges. I faced issues detecting the Turbo key and ended up using [acer_wmi](https://github.com/torvalds/linux/blob/master/drivers/platform/x86/acer-wmi.c), but it lacked key features like RGB , custom fan support, battery limiter, and more. As a result, I decided to implement these missing features in my own project.
 

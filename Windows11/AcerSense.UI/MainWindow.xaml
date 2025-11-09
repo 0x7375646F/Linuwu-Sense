@@ -1,0 +1,483 @@
+<ui:Window x:Class="AcerSense.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ui="http://schemas.modernwpf.com/2019"
+        mc:Ignorable="d"
+        Title="Acer Sense - Windows 11"
+        Height="700"
+        Width="1000"
+        MinHeight="600"
+        MinWidth="800"
+        WindowStartupLocation="CenterScreen"
+        ui:WindowHelper.UseModernWindowStyle="True">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Background="{DynamicResource SystemControlAcrylicWindowBrush}" Padding="20,15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="Acer Sense for Windows 11"
+                           FontSize="24"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,5"/>
+                <TextBlock x:Name="DeviceNameText"
+                           Text="Detecting device..."
+                           FontSize="14"
+                           Opacity="0.7"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="🟢"
+                           x:Name="StatusIndicator"
+                           FontSize="16"
+                           Margin="0,0,10,0"
+                           ToolTip="Connected"/>
+                <Button Content="Refresh"
+                        Click="RefreshButton_Click"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Margin="5,0"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Main Content -->
+        <ui:TabControl Grid.Row="1" Margin="0">
+
+            <!-- Performance Tab -->
+            <ui:TabItem Header="Performance">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Padding="30" MaxWidth="800">
+
+                        <!-- Performance Profile -->
+                        <ui:SimpleStackPanel Spacing="10" Margin="0,0,0,30">
+                            <TextBlock Text="Performance Profile"
+                                       FontSize="20"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Text="Select the performance mode for your laptop"
+                                       Opacity="0.7"/>
+
+                            <ComboBox x:Name="PerformanceProfileCombo"
+                                      SelectionChanged="PerformanceProfile_Changed"
+                                      Margin="0,10,0,0"
+                                      MinWidth="250">
+                                <ComboBoxItem Content="Quiet" Tag="0"/>
+                                <ComboBoxItem Content="Balanced" Tag="1" IsSelected="True"/>
+                                <ComboBoxItem Content="Performance" Tag="2"/>
+                                <ComboBoxItem Content="Turbo" Tag="3"/>
+                            </ComboBox>
+                        </ui:SimpleStackPanel>
+
+                        <!-- Turbo Mode -->
+                        <ui:SimpleStackPanel Spacing="10" Margin="0,0,0,30">
+                            <TextBlock Text="Turbo/Overclock Mode"
+                                       FontSize="20"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Text="Enable CPU overclocking for maximum performance"
+                                       Opacity="0.7"/>
+                            <ui:ToggleSwitch x:Name="TurboModeToggle"
+                                             OnContent="Enabled"
+                                             OffContent="Disabled"
+                                             Toggled="TurboMode_Toggled"
+                                             Margin="0,10,0,0"/>
+                        </ui:SimpleStackPanel>
+
+                        <!-- Fan Control -->
+                        <ui:SimpleStackPanel Spacing="10">
+                            <TextBlock Text="Fan Control"
+                                       FontSize="20"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Text="Monitor and control fan speeds"
+                                       Opacity="0.7"/>
+
+                            <!-- CPU Fan -->
+                            <Grid Margin="0,15,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="100"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="100"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           Text="CPU Fan"
+                                           VerticalAlignment="Center"/>
+                                <Slider Grid.Row="0" Grid.Column="1"
+                                        x:Name="CpuFanSlider"
+                                        Minimum="0"
+                                        Maximum="100"
+                                        Value="50"
+                                        TickFrequency="10"
+                                        TickPlacement="BottomRight"
+                                        ValueChanged="CpuFanSlider_Changed"
+                                        Margin="10,0"/>
+                                <TextBlock Grid.Row="0" Grid.Column="2"
+                                           x:Name="CpuFanValueText"
+                                           Text="50%"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0"
+                                           Grid.ColumnSpan="3"
+                                           x:Name="CpuFanSpeedText"
+                                           Text="Speed: 0 RPM"
+                                           Margin="0,5,0,0"
+                                           Opacity="0.7"/>
+                            </Grid>
+
+                            <!-- GPU Fan -->
+                            <Grid Margin="0,20,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="100"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="100"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           Text="GPU Fan"
+                                           VerticalAlignment="Center"/>
+                                <Slider Grid.Row="0" Grid.Column="1"
+                                        x:Name="GpuFanSlider"
+                                        Minimum="0"
+                                        Maximum="100"
+                                        Value="50"
+                                        TickFrequency="10"
+                                        TickPlacement="BottomRight"
+                                        ValueChanged="GpuFanSlider_Changed"
+                                        Margin="10,0"/>
+                                <TextBlock Grid.Row="0" Grid.Column="2"
+                                           x:Name="GpuFanValueText"
+                                           Text="50%"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0"
+                                           Grid.ColumnSpan="3"
+                                           x:Name="GpuFanSpeedText"
+                                           Text="Speed: 0 RPM"
+                                           Margin="0,5,0,0"
+                                           Opacity="0.7"/>
+                            </Grid>
+                        </ui:SimpleStackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </ui:TabItem>
+
+            <!-- RGB Keyboard Tab -->
+            <ui:TabItem Header="RGB Keyboard">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Padding="30" MaxWidth="800">
+
+                        <TextBlock Text="RGB Keyboard Control"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,10"/>
+                        <TextBlock Text="Customize your 4-zone RGB keyboard backlight"
+                                   Opacity="0.7"
+                                   Margin="0,0,0,20"/>
+
+                        <!-- Quick Presets -->
+                        <ui:SimpleStackPanel Spacing="10" Margin="0,0,0,30">
+                            <TextBlock Text="Quick Presets" FontWeight="SemiBold"/>
+                            <WrapPanel>
+                                <Button Content="Rainbow" Click="Rainbow_Click" Margin="0,0,10,10" Padding="15,8"/>
+                                <Button Content="Red" Click="RedPreset_Click" Margin="0,0,10,10" Padding="15,8"/>
+                                <Button Content="Green" Click="GreenPreset_Click" Margin="0,0,10,10" Padding="15,8"/>
+                                <Button Content="Blue" Click="BluePreset_Click" Margin="0,0,10,10" Padding="15,8"/>
+                                <Button Content="White" Click="WhitePreset_Click" Margin="0,0,10,10" Padding="15,8"/>
+                                <Button Content="Off" Click="OffPreset_Click" Margin="0,0,10,10" Padding="15,8"/>
+                            </WrapPanel>
+                        </ui:SimpleStackPanel>
+
+                        <!-- Zone 1 -->
+                        <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                BorderThickness="1"
+                                Padding="15"
+                                Margin="0,0,0,15"
+                                CornerRadius="4">
+                            <StackPanel>
+                                <TextBlock Text="Zone 1" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Red:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                    <Slider Grid.Row="0" Grid.Column="1" x:Name="Zone1RedSlider" Minimum="0" Maximum="255" Value="255" Margin="0,0,0,10"/>
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Green:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                    <Slider Grid.Row="1" Grid.Column="1" x:Name="Zone1GreenSlider" Minimum="0" Maximum="255" Value="0" Margin="0,0,0,10"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Blue:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <Slider Grid.Row="2" Grid.Column="1" x:Name="Zone1BlueSlider" Minimum="0" Maximum="255" Value="0"/>
+                                </Grid>
+                                <Button Content="Apply to Zone 1" Click="ApplyZone1_Click" Margin="0,10,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Zone 2 -->
+                        <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                BorderThickness="1"
+                                Padding="15"
+                                Margin="0,0,0,15"
+                                CornerRadius="4">
+                            <StackPanel>
+                                <TextBlock Text="Zone 2" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Red:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                    <Slider Grid.Row="0" Grid.Column="1" x:Name="Zone2RedSlider" Minimum="0" Maximum="255" Value="0" Margin="0,0,0,10"/>
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Green:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                    <Slider Grid.Row="1" Grid.Column="1" x:Name="Zone2GreenSlider" Minimum="0" Maximum="255" Value="255" Margin="0,0,0,10"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Blue:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <Slider Grid.Row="2" Grid.Column="1" x:Name="Zone2BlueSlider" Minimum="0" Maximum="255" Value="0"/>
+                                </Grid>
+                                <Button Content="Apply to Zone 2" Click="ApplyZone2_Click" Margin="0,10,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Zone 3 -->
+                        <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                BorderThickness="1"
+                                Padding="15"
+                                Margin="0,0,0,15"
+                                CornerRadius="4">
+                            <StackPanel>
+                                <TextBlock Text="Zone 3" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Red:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                    <Slider Grid.Row="0" Grid.Column="1" x:Name="Zone3RedSlider" Minimum="0" Maximum="255" Value="0" Margin="0,0,0,10"/>
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Green:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                    <Slider Grid.Row="1" Grid.Column="1" x:Name="Zone3GreenSlider" Minimum="0" Maximum="255" Value="0" Margin="0,0,0,10"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Blue:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <Slider Grid.Row="2" Grid.Column="1" x:Name="Zone3BlueSlider" Minimum="0" Maximum="255" Value="255"/>
+                                </Grid>
+                                <Button Content="Apply to Zone 3" Click="ApplyZone3_Click" Margin="0,10,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Zone 4 -->
+                        <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                BorderThickness="1"
+                                Padding="15"
+                                Margin="0,0,0,15"
+                                CornerRadius="4">
+                            <StackPanel>
+                                <TextBlock Text="Zone 4" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                        <RowDefinition/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Red:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                    <Slider Grid.Row="0" Grid.Column="1" x:Name="Zone4RedSlider" Minimum="0" Maximum="255" Value="255" Margin="0,0,0,10"/>
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Green:" VerticalAlignment="Center" Margin="0,0,10,10"/>
+                                    <Slider Grid.Row="1" Grid.Column="1" x:Name="Zone4GreenSlider" Minimum="0" Maximum="255" Value="0" Margin="0,0,0,10"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Blue:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <Slider Grid.Row="2" Grid.Column="1" x:Name="Zone4BlueSlider" Minimum="0" Maximum="255" Value="255"/>
+                                </Grid>
+                                <Button Content="Apply to Zone 4" Click="ApplyZone4_Click" Margin="0,10,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </ui:TabItem>
+
+            <!-- Battery Tab -->
+            <ui:TabItem Header="Battery">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Padding="30" MaxWidth="800">
+
+                        <TextBlock Text="Battery Management"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,10"/>
+                        <TextBlock Text="Extend battery lifespan with health management features"
+                                   Opacity="0.7"
+                                   Margin="0,0,0,30"/>
+
+                        <!-- Battery Health Mode -->
+                        <ui:SimpleStackPanel Spacing="10" Margin="0,0,0,30">
+                            <TextBlock Text="Battery Health Mode"
+                                       FontWeight="SemiBold"
+                                       FontSize="16"/>
+                            <TextBlock TextWrapping="Wrap" Opacity="0.7">
+                                <Run Text="Limits charging to extend battery lifespan."/>
+                                <LineBreak/>
+                                <Run Text="Recommended for laptops that stay plugged in most of the time."/>
+                            </TextBlock>
+
+                            <ui:ToggleSwitch x:Name="BatteryHealthToggle"
+                                             OnContent="Enabled"
+                                             OffContent="Disabled"
+                                             Toggled="BatteryHealth_Toggled"
+                                             Margin="0,10,0,0"/>
+
+                            <Grid Margin="0,15,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0"
+                                           Text="Charge Limit:"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,10,0"/>
+                                <Slider Grid.Column="1"
+                                        x:Name="BatteryLimitSlider"
+                                        Minimum="60"
+                                        Maximum="100"
+                                        Value="80"
+                                        TickFrequency="10"
+                                        TickPlacement="BottomRight"
+                                        ValueChanged="BatteryLimit_Changed"
+                                        Margin="0,0,10,0"/>
+                                <TextBlock Grid.Column="2"
+                                           x:Name="BatteryLimitText"
+                                           Text="80%"
+                                           VerticalAlignment="Center"
+                                           MinWidth="50"/>
+                            </Grid>
+                        </ui:SimpleStackPanel>
+
+                        <!-- Battery Calibration -->
+                        <ui:SimpleStackPanel Spacing="10">
+                            <TextBlock Text="Battery Calibration"
+                                       FontWeight="SemiBold"
+                                       FontSize="16"/>
+                            <TextBlock TextWrapping="Wrap" Opacity="0.7">
+                                <Run Text="Fully charges then discharges the battery to recalibrate the battery gauge."/>
+                                <LineBreak/>
+                                <Run Text="This process may take several hours."/>
+                            </TextBlock>
+
+                            <Button Content="Start Calibration"
+                                    Click="StartCalibration_Click"
+                                    Margin="0,10,0,0"
+                                    Padding="20,10"/>
+                        </ui:SimpleStackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </ui:TabItem>
+
+            <!-- About Tab -->
+            <ui:TabItem Header="About">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Padding="30" MaxWidth="800">
+
+                        <TextBlock Text="About Acer Sense"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,20"/>
+
+                        <ui:SimpleStackPanel Spacing="15">
+                            <TextBlock TextWrapping="Wrap">
+                                <Run Text="Acer Sense for Windows 11" FontWeight="SemiBold"/>
+                                <LineBreak/>
+                                <Run Text="Version 1.0.0" Opacity="0.7"/>
+                            </TextBlock>
+
+                            <TextBlock TextWrapping="Wrap" Opacity="0.7">
+                                <Run Text="Control your Acer Predator or Nitro laptop's hardware features including performance profiles, fan speeds, RGB keyboard, and battery management."/>
+                            </TextBlock>
+
+                            <Separator Margin="0,10"/>
+
+                            <TextBlock Text="Detected Device" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="AboutDeviceText" Text="Unknown" Opacity="0.7"/>
+
+                            <TextBlock Text="Available Features" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                            <ItemsControl x:Name="FeaturesList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" Margin="0,2" Opacity="0.7">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="{Binding}"/>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Separator Margin="0,10"/>
+
+                            <TextBlock TextWrapping="Wrap" Opacity="0.7">
+                                <Run Text="Based on Linuwu-Sense Linux kernel module"/>
+                                <LineBreak/>
+                                <Run Text="Ported to Windows 11 using WMI/ACPI"/>
+                            </TextBlock>
+
+                            <TextBlock TextWrapping="Wrap" Opacity="0.5" FontSize="11" Margin="0,20,0,0">
+                                <Run Text="⚠️ This application requires administrator privileges to access hardware controls."/>
+                                <LineBreak/>
+                                <Run Text="⚠️ Use at your own risk. Improper settings may affect system stability."/>
+                            </TextBlock>
+                        </ui:SimpleStackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </ui:TabItem>
+
+        </ui:TabControl>
+
+    </Grid>
+</ui:Window>
