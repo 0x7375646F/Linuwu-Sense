@@ -33,7 +33,7 @@
  #include <linux/hwmon.h>
  #include <linux/fs.h>
  #include <linux/units.h>
- #include <linux/unaligned.h>
+ #include <asm/unaligned.h>
  #include <linux/bitfield.h>
  #include <linux/bitmap.h>
  
@@ -1997,8 +1997,8 @@ enum acer_wmi_predator_v4_oc {
      }
  
      acer_backlight_device = bd;
- 
-     bd->props.power = BACKLIGHT_POWER_ON;
+
+     bd->props.power = FB_BLANK_UNBLANK;
      bd->props.brightness = read_brightness(bd);
      backlight_update_status(bd);
      return 0;
@@ -2281,39 +2281,51 @@ enum acer_wmi_predator_v4_oc {
  
  static acpi_status acer_predator_state_restore(int value);
  
- static acpi_status battery_health_set(u8 function, u8 function_status);
- 
- static const struct platform_profile_ops acer_predator_v4_platform_profile_ops = {
-     .probe = acer_predator_v4_platform_profile_probe,
-     .profile_get = acer_predator_v4_platform_profile_get,
-     .profile_set = acer_predator_v4_platform_profile_set,
- };
- 
- static int acer_platform_profile_setup(struct platform_device *pdev)
- {
-     const int max_retries = 10;
-     int delay_ms = 100;
-     if (!quirks->predator_v4 && !quirks->nitro_sense && !quirks->nitro_v4)
-         return 0;
-     for (int attempt = 1; attempt <= max_retries; attempt++) {
-         platform_profile_device = devm_platform_profile_register(
-             &pdev->dev, "acer-wmi", NULL, &acer_predator_v4_platform_profile_ops);
-         if (!IS_ERR(platform_profile_device)) {
-             platform_profile_support = true;
-             pr_info("Platform profile registered successfully (attempt %d)\n", attempt);
-             return 0;
-         }
-         pr_warn("Platform profile registration failed (attempt %d/%d), error: %ld\n",
-                 attempt, max_retries, PTR_ERR(platform_profile_device));
-         if (attempt < max_retries) {
-             msleep(delay_ms);
-             delay_ms = min(delay_ms * 2, 1000);
-         }
-     }
-     return PTR_ERR(platform_profile_device);
- }
- 
- static int acer_thermal_profile_change(void)
+static acpi_status battery_health_set(u8 function, u8 function_status);
+
+static int acer_predator_v4_platform_profile_get_wrapper(struct platform_profile_handler *pprof,
+                                                         enum platform_profile_option *profile)
+{
+    return acer_predator_v4_platform_profile_get(NULL, profile);
+}
+
+static int acer_predator_v4_platform_profile_set_wrapper(struct platform_profile_handler *pprof,
+                                                         enum platform_profile_option profile)
+{
+    return acer_predator_v4_platform_profile_set(NULL, profile);
+}
+
+static struct platform_profile_handler acer_predator_v4_platform_profile_handler = {
+    .profile_get = acer_predator_v4_platform_profile_get_wrapper,
+    .profile_set = acer_predator_v4_platform_profile_set_wrapper,
+};
+
+static int acer_platform_profile_setup(struct platform_device *pdev)
+{
+    const int max_retries = 10;
+    int delay_ms = 100;
+    int err = -ENODEV;
+    if (!quirks->predator_v4 && !quirks->nitro_sense && !quirks->nitro_v4)
+        return 0;
+    for (int attempt = 1; attempt <= max_retries; attempt++) {
+        err = platform_profile_register(&acer_predator_v4_platform_profile_handler);
+        if (err == 0) {
+            platform_profile_device = &pdev->dev;
+            platform_profile_support = true;
+            pr_info("Platform profile registered successfully (attempt %d)\n", attempt);
+            return 0;
+        }
+        pr_warn("Platform profile registration failed (attempt %d/%d), error: %d\n",
+                attempt, max_retries, err);
+        if (attempt < max_retries) {
+            msleep(delay_ms);
+            delay_ms = min(delay_ms * 2, 1000);
+        }
+    }
+    return err;
+}
+
+static int acer_thermal_profile_change(void)
  {
      /*
       * This mode key can rotate each mode or toggle turbo mode.
@@ -2388,7 +2400,7 @@ enum acer_wmi_predator_v4_oc {
          if (tp != acer_predator_v4_max_perf)
              last_non_turbo_profile = tp;
  
-         platform_profile_notify(platform_profile_device);
+         platform_profile_notify();
      }
  
      return 0;
@@ -2620,27 +2632,37 @@ enum acer_wmi_predator_v4_oc {
      }
  }
  
- static void acer_wmi_notify(union acpi_object *obj, void *context)
- {
-     struct event_return_value return_value;
-     u16 device_state;
-     const struct key_entry *key;
-     u32 scancode;
- 
-     if (!obj)
-         return;
-     if (obj->type != ACPI_TYPE_BUFFER) {
-         pr_warn("Unknown response received %d\n", obj->type);
-         return;
-     }
-     if (obj->buffer.length != 8) {
-         pr_warn("Unknown buffer length %d\n", obj->buffer.length);
-         return;
-     }
- 
-     return_value = *((struct event_return_value *)obj->buffer.pointer);
- 
-     switch (return_value.function) {
+static void acer_wmi_notify(u32 value, void *context)
+{
+    struct event_return_value return_value;
+    u16 device_state;
+    const struct key_entry *key;
+    u32 scancode;
+    struct acpi_buffer response = { ACPI_ALLOCATE_BUFFER, NULL };
+    union acpi_object *obj;
+    acpi_status status;
+
+    status = wmi_get_event_data(value, &response);
+    if (ACPI_FAILURE(status)) {
+        pr_warn("Bad event status 0x%x\n", status);
+        return;
+    }
+
+    obj = (union acpi_object *)response.pointer;
+    if (!obj)
+        return;
+    if (obj->type != ACPI_TYPE_BUFFER) {
+        pr_warn("Unknown response received %d\n", obj->type);
+        kfree(obj);
+        return;
+    }
+    if (obj->buffer.length != 8) {
+        pr_warn("Unknown buffer length %d\n", obj->buffer.length);
+        kfree(obj);
+        return;
+    }
+
+    return_value = *((struct event_return_value *)obj->buffer.pointer);     switch (return_value.function) {
      case WMID_HOTKEY_EVENT:
          device_state = return_value.device_state;
          pr_info("device state: 0x%x\n", device_state);
@@ -2710,13 +2732,14 @@ enum acer_wmi_predator_v4_oc {
          }
          break;
      default:
-         pr_warn("Unknown function number - %d - %d\n",
-             return_value.function, return_value.key_num);
-         break;
-     }
- }
- 
- static acpi_status __init
+        pr_warn("Unknown function number - %d - %d\n",
+            return_value.function, return_value.key_num);
+        break;
+    }
+    kfree(obj);
+}
+
+static acpi_status __init
  wmid3_set_function_mode(struct func_input_params *params,
              struct func_return_value *return_value)
  {
@@ -4207,17 +4230,23 @@ enum acer_wmi_predator_v4_oc {
          set_u32(LED_OFF, ACER_CAP_MAILLED);
  }
  
- static struct platform_driver acer_platform_driver = {
-     .driver = {
-         .name = "acer-wmi",
-         .pm = &acer_pm,
-     },
-     .probe = acer_platform_probe,
-     .remove = acer_platform_remove,
-     .shutdown = acer_platform_shutdown,
- };
- 
- static struct platform_device *acer_platform_device;
+static int acer_platform_remove_compat(struct platform_device *device)
+{
+    acer_platform_remove(device);
+    return 0;
+}
+
+static struct platform_driver acer_platform_driver = {
+    .driver = {
+        .name = "acer-wmi",
+        .pm = &acer_pm,
+    },
+    .probe = acer_platform_probe,
+    .remove = acer_platform_remove_compat,
+    .shutdown = acer_platform_shutdown,
+};
+
+static struct platform_device *acer_platform_device;
  
  static void remove_debugfs(void)
  {
