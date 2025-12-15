@@ -488,11 +488,6 @@ enum acer_wmi_predator_v4_oc {
     .four_zone_kb = 1,
  };
 
- static struct quirk_entry quirk_acer_nitro_anv16_41 = {
-    .nitro_v4 = 1,
-    .four_zone_kb = 0,
- };
-
   static struct quirk_entry quirk_acer_nitro_an16_43 = {
     .nitro_v4 = 1,
     .four_zone_kb = 1,
@@ -601,15 +596,6 @@ enum acer_wmi_predator_v4_oc {
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN16-41"),
          },
          .driver_data = &quirk_acer_nitro_an16_41,
-     },     
-     {
-         .callback = dmi_matched,
-         .ident = "Acer Nitro ANV16-41",
-         .matches = {
-             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV16-41"),
-         },
-         .driver_data = &quirk_acer_nitro_anv16_41,
      },
      {
          .callback = dmi_matched,
@@ -626,15 +612,6 @@ enum acer_wmi_predator_v4_oc {
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV15-51"),
-         },
-         .driver_data = &quirk_acer_nitro,
-     },
-     {
-         .callback = dmi_matched,
-         .ident = "Acer Nitro AN515-55",
-         .matches = {
-             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-55"),
          },
          .driver_data = &quirk_acer_nitro,
      },
@@ -2283,35 +2260,43 @@ enum acer_wmi_predator_v4_oc {
  
  static acpi_status battery_health_set(u8 function, u8 function_status);
  
- static const struct platform_profile_ops acer_predator_v4_platform_profile_ops = {
-     .probe = acer_predator_v4_platform_profile_probe,
-     .profile_get = acer_predator_v4_platform_profile_get,
-     .profile_set = acer_predator_v4_platform_profile_set,
- };
- 
- static int acer_platform_profile_setup(struct platform_device *pdev)
- {
-     const int max_retries = 10;
-     int delay_ms = 100;
-     if (!quirks->predator_v4 && !quirks->nitro_sense && !quirks->nitro_v4)
-         return 0;
-     for (int attempt = 1; attempt <= max_retries; attempt++) {
-         platform_profile_device = devm_platform_profile_register(
-             &pdev->dev, "acer-wmi", NULL, &acer_predator_v4_platform_profile_ops);
-         if (!IS_ERR(platform_profile_device)) {
-             platform_profile_support = true;
-             pr_info("Platform profile registered successfully (attempt %d)\n", attempt);
-             return 0;
-         }
-         pr_warn("Platform profile registration failed (attempt %d/%d), error: %ld\n",
-                 attempt, max_retries, PTR_ERR(platform_profile_device));
-         if (attempt < max_retries) {
-             msleep(delay_ms);
-             delay_ms = min(delay_ms * 2, 1000);
-         }
-     }
-     return PTR_ERR(platform_profile_device);
- }
+ /*
+ * Nova API do platform_profile para kernel 6.14+
+ * Usa struct platform_profile_ops em vez de platform_profile_handler
+ */
+static const struct platform_profile_ops acer_platform_profile_ops = {
+    .probe = acer_predator_v4_platform_profile_probe,
+    .profile_get = acer_predator_v4_platform_profile_get,
+    .profile_set = acer_predator_v4_platform_profile_set,
+};
+
+static int acer_platform_profile_setup(struct platform_device *pdev)
+{
+    const int max_retries = 10;
+    int delay_ms = 100;
+    int attempt;
+
+    for (attempt = 1; attempt <= max_retries; attempt++) {
+        platform_profile_device = platform_profile_register(&pdev->dev,
+                                                            "acer-wmi",
+                                                            NULL,
+                                                            &acer_platform_profile_ops);
+        if (!IS_ERR(platform_profile_device)) {
+            platform_profile_support = true;
+            pr_info("Platform profile registered successfully (attempt %d)\n", attempt);
+            return 0;
+        }
+
+        pr_warn("Platform profile registration failed (attempt %d/%d), error: %ld\n",
+                attempt, max_retries, PTR_ERR(platform_profile_device));
+
+        if (attempt < max_retries) {
+            msleep(delay_ms);
+            delay_ms = min(delay_ms * 2, 1000);
+        }
+    }
+    return PTR_ERR(platform_profile_device);
+}
  
  static int acer_thermal_profile_change(void)
  {
