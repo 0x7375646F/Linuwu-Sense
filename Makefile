@@ -43,7 +43,6 @@ install: all
 	sudo depmod -a
 	@echo "$(MODNAME)" | sudo tee /etc/modules-load.d/$(MODNAME).conf > /dev/null
 	sudo modprobe $(MODNAME)
-	@sleep 2
 	@sudo cp linuwu_sense.service /etc/systemd/system/
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable linuwu_sense.service
