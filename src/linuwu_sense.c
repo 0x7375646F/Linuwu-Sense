@@ -488,6 +488,11 @@ enum acer_wmi_predator_v4_oc {
     .four_zone_kb = 1,
  };
 
+ static struct quirk_entry quirk_acer_nitro_an16_42 = {
+     .nitro_v4 = 1,
+     .four_zone_kb = 1,
+ };
+
  static struct quirk_entry quirk_acer_nitro_anv16_41 = {
     .nitro_v4 = 1,
     .four_zone_kb = 0,
@@ -583,6 +588,15 @@ enum acer_wmi_predator_v4_oc {
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN16-43"),
          },
          .driver_data = &quirk_acer_nitro_an16_43,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Nitro AN16-42",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN16-42"),
+         },
+         .driver_data = &quirk_acer_nitro_an16_42,
      },
      {
         .callback = dmi_matched,
