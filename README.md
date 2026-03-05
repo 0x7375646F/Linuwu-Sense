@@ -30,6 +30,39 @@ make uninstall
 > ## Use at your own risk! This driver is independently developed through reverse engineering the official PredatorSense app, without any involvement from Acer. It interacts with low-level WMI methods, which may not be tested across all models.
 
 ## 🛠️ Usage
+# Python Control Script
+For easy control of all Linuwu-Sense features, use the included Python script [**`Linuwu-Sense.py`**](Linuwu-Sense.py). This script provides a user-friendly interface to control all module features without manually writing to sysfs files.
+
+**Usage Examples:**
+
+```bash
+# Show current status of all controls
+linuwu-sense --status
+
+# Set fan speeds (CPU=50%, GPU=70%)
+linuwu-sense --fan-speed 50 70
+
+# Enable battery limiter (80% charging limit)
+linuwu-sense --battery-limiter
+
+# Set four-zone RGB to breathing mode (purple, speed=4, brightness=100)
+# Note: Direction parameter (4th value) can be 0 (ignored), 1 (right to left), or 2 (left to right)
+linuwu-sense --four-zone-mode 1 4 100 1 255 0 255
+
+# Set per-zone colors (all zones blue, brightness=100)
+linuwu-sense --per-zone-mode 4287f5 4287f5 4287f5 4287f5 100
+
+# Save current settings as a profile
+linuwu-sense --save-profile gaming
+
+# Load a saved profile
+linuwu-sense --load-profile gaming
+
+# List all saved profiles
+linuwu-sense --list-profiles
+
+```
+
 # Example Usage and Configuration
 
 Thermal profiles can be easily switched with a single click! 😎 For battery mode, you can choose between Eco and Balanced, while when plugged into AC, you have the options for Quiet, Balanced, Performance, and Turbo. ⚡💻 Each profile will be different for battery and AC, and the thermal and fan settings will automatically adjust based on your current power source. Customize it to fit your preferences! 🌟
