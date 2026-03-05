@@ -428,8 +428,13 @@ enum acer_wmi_predator_v4_oc {
                       | ACER_CAP_TURBO_FAN;
  
     /* Some acer nitro laptops don't have features like lcd override , boot animation sound so this is used. Think wisely before using any quirks validate your features. */
-     if (quirks->nitro_sense)
-         interface->capability |= ACER_CAP_PLATFORM_PROFILE | ACER_CAP_FAN_SPEED_READ | ACER_CAP_NITRO_SENSE;
+     if (quirks->nitro_sense == 1) {
+                interface->capability |= ACER_CAP_PLATFORM_PROFILE | ACER_CAP_FAN_SPEED_READ | ACER_CAP_NITRO_SENSE;
+             } else if (quirks->nitro_sense == 2) {
+                /* Platform Profile is not found on some older acer nitro models, so we exclude it */
+                interface->capability |= ACER_CAP_FAN_SPEED_READ | ACER_CAP_NITRO_SENSE;
+         }
+
  
      if (quirks->predator_v4)
          interface->capability |= ACER_CAP_PLATFORM_PROFILE |
@@ -501,6 +506,10 @@ enum acer_wmi_predator_v4_oc {
   static struct quirk_entry quirk_acer_nitro_an16_43 = {
     .nitro_v4 = 1,
     .four_zone_kb = 1,
+ };
+ 
+ static struct quirk_entry quirk_acer_nitro_legacy = {
+     .nitro_sense = 2,
  };
  
  static struct quirk_entry quirk_acer_nitro_an515_58 = {
@@ -650,7 +659,7 @@ enum acer_wmi_predator_v4_oc {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-55"),
          },
-         .driver_data = &quirk_acer_nitro,
+         .driver_data = &quirk_acer_nitro_legacy,
      },
      {
          .callback = dmi_matched,
@@ -2333,7 +2342,10 @@ enum acer_wmi_predator_v4_oc {
              delay_ms = min(delay_ms * 2, 1000);
          }
      }
-     return PTR_ERR(platform_profile_device);
+     pr_warn("Platform profile setup failed. Continuing to load without profile support.\n");
+     platform_profile_support = false; /* Disable platform profile support if unavailable. */
+     
+     return 0;
  }
  
  static int acer_thermal_profile_change(void)
