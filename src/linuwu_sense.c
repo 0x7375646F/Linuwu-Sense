@@ -487,6 +487,16 @@ enum acer_wmi_predator_v4_oc {
     .predator_v4 = 1,
     .four_zone_kb = 1,
  };
+
+ static struct quirk_entry quirk_acer_predator_phn16_73 = {
+    .predator_v4 = 1,
+    .four_zone_kb = 1,
+ };
+
+ static struct quirk_entry quirk_acer_predator_phn16s_71 = {
+    .predator_v4 = 1,
+    .four_zone_kb = 1,
+ };
  
  static struct quirk_entry quirk_acer_nitro_an16_41 = {
     .nitro_v4 = 1,
@@ -795,7 +805,25 @@ enum acer_wmi_predator_v4_oc {
             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16-72"),
         },
         .driver_data = &quirk_acer_predator_phn16_72,
-    },
+     },
+     {
+        .callback = dmi_matched,
+        .ident = "Acer Predator PHN16-73",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16-73"),
+        },
+        .driver_data = &quirk_acer_predator_phn16_73,
+     },
+     {
+        .callback = dmi_matched,
+        .ident = "Acer Predator PHN16S-71",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16S-71")
+        },
+        .driver_data = &quirk_acer_predator_phn16s_71,
+     },
      {
          .callback = dmi_matched,
          .ident = "Acer Predator PH16-71",
