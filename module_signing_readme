@@ -1,0 +1,27 @@
+1. Create a folder to store the keys
+
+# creates folder in home/userName/ directory
+mkdir -p ~/module-signing
+cd ~/module-signing
+
+2. Generate the keys
+
+openssl req -new -x509 -newkey rsa:2048 -keyout MOK.priv -outform DER -out MOK.der \
+    -nodes -days 36500 -subj "/CN=LinuwuKey/"
+
+3. Makefile usage
+....
+
+4. Enroll the key
+
+sudo mokutil --import ~/module-signing/MOK.der
+
+# setup a temp password
+# reboot
+# select enroll mok
+# select key 0
+# select enroll
+
+
+# The steps 3 and 4 can be interchangeable, BUT make sure the module is SIGNED before it is loaded, which is
+# carried out in step 3 anyways during Makefile usage.
