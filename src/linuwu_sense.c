@@ -149,7 +149,19 @@
     ACER_WMID_SENSOR_EXTERNAL_TEMPERATURE_2 = 0x03,
     ACER_WMID_SENSOR_GPU_FAN_SPEED		= 0x06,
     ACER_WMID_SENSOR_GPU_TEMPERATURE	= 0x0A,
+    /* PHN14-51 specific sensor IDs */
+    ACER_WMID_SENSOR_PHN14_CPU_FAN	= 0x19,  /* bit 25 */
+    ACER_WMID_SENSOR_PHN14_GPU_FAN	= 0x1A,  /* bit 26 */
+    ACER_WMID_SENSOR_PHN14_TEMP_1	= 0x1D,  /* bit 29 */
+    ACER_WMID_SENSOR_PHN14_TEMP_2	= 0x1E,  /* bit 30 */
+    ACER_WMID_SENSOR_PHN14_TEMP_3	= 0x21,  /* bit 33 */
 };
+
+/* PHN14-51 EC (Embedded Controller) offsets for direct reading */
+#define ACER_PHN14_EC_FAN_CPU_LSB	0x13
+#define ACER_PHN14_EC_FAN_CPU_MSB	0x14
+#define ACER_PHN14_EC_FAN_GPU_LSB	0x15
+#define ACER_PHN14_EC_FAN_GPU_MSB	0x16
 
 enum acer_wmi_predator_v4_oc {
     ACER_WMID_OC_NORMAL			= 0x0000,
@@ -344,8 +356,8 @@ enum acer_wmi_predator_v4_oc {
  module_param(force_caps, int, 0444);
  module_param(ec_raw_mode, bool, 0444);
  module_param(cycle_gaming_thermal_profile, bool, 0644);
- module_param(predator_v4, bool, 0444);
- module_param(nitro_v4, bool, 0444);
+module_param(predator_v4, bool, 0444);
+module_param(nitro_v4, bool, 0444);
  MODULE_PARM_DESC(mailled, "Set initial state of Mail LED");
  MODULE_PARM_DESC(brightness, "Set initial LCD backlight brightness");
  MODULE_PARM_DESC(threeg, "Set initial state of 3G hardware");
@@ -411,6 +423,7 @@ enum acer_wmi_predator_v4_oc {
      u8 nitro_v4;
      u8 nitro_sense;
      u8 four_zone_kb;
+     u8 phn14_sensors; /* PHN14-51 specific sensors */
  };
  
  static struct quirk_entry *quirks;
@@ -486,6 +499,12 @@ enum acer_wmi_predator_v4_oc {
  static struct quirk_entry quirk_acer_predator_phn16_72 = {
     .predator_v4 = 1,
     .four_zone_kb = 1,
+ };
+
+ static struct quirk_entry quirk_acer_predator_phn14_51 = {
+    .predator_v4 = 1,
+    .four_zone_kb = 1,
+    .phn14_sensors = 1, /* Enable PHN14-51 specific sensor mappings */
  };
  
  static struct quirk_entry quirk_acer_nitro_an16_41 = {
@@ -795,6 +814,15 @@ enum acer_wmi_predator_v4_oc {
             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16-72"),
         },
         .driver_data = &quirk_acer_predator_phn16_72,
+    },
+     {
+        .callback = dmi_matched,
+        .ident = "Acer Predator PHN14-51",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN14-51"),
+        },
+        .driver_data = &quirk_acer_predator_phn14_51,
     },
      {
          .callback = dmi_matched,
@@ -2209,7 +2237,6 @@ enum acer_wmi_predator_v4_oc {
      if (ACPI_FAILURE(status))
          return -EIO;
  
-     /* Check power source */
      /* Blocking these modes since in official version this is not supported when its not plugged in AC! */
      if(!on_AC && (profile == PLATFORM_PROFILE_PERFORMANCE || profile == PLATFORM_PROFILE_BALANCED_PERFORMANCE || profile == PLATFORM_PROFILE_QUIET)){
          return -EOPNOTSUPP;
@@ -2407,7 +2434,7 @@ enum acer_wmi_predator_v4_oc {
                 return -EOPNOTSUPP;
             }
         }
-
+ 
          err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, tp);
          if (err)
              return err;
@@ -2678,7 +2705,6 @@ enum acer_wmi_predator_v4_oc {
      switch (return_value.function) {
      case WMID_HOTKEY_EVENT:
          device_state = return_value.device_state;
-         pr_info("device state: 0x%x\n", device_state);
  
          key = sparse_keymap_entry_from_scancode(acer_wmi_input_dev,
                              return_value.key_num);
@@ -2712,7 +2738,6 @@ enum acer_wmi_predator_v4_oc {
          acer_kbd_dock_event(&return_value);
          break;
      case WMID_GAMING_TURBO_KEY_EVENT:
-        pr_info("pressed turbo button - %d\n", return_value.key_num);
          if (return_value.key_num == 0x4  && !has_cap(ACER_CAP_NITRO_SENSE_V4))
              acer_toggle_turbo();
          if ((return_value.key_num == 0x5 || (return_value.key_num == 0x4 && has_cap(ACER_CAP_NITRO_SENSE_V4))) && has_cap(ACER_CAP_PLATFORM_PROFILE))
@@ -3042,7 +3067,7 @@ enum acer_wmi_predator_v4_oc {
          .uFunctionQuery = 0x1,
          .uReserved = { 0x0, 0x0 }
      };
-     struct get_battery_health_control_status_output ret;
+    struct get_battery_health_control_status_output ret;
  
      struct acpi_buffer input = {
          sizeof(struct get_battery_health_control_status_input), &params
@@ -4266,17 +4291,30 @@ enum acer_wmi_predator_v4_oc {
      debugfs_create_u32("devices", S_IRUGO, interface->debug.root,
                 &interface->debug.wmid_devices);
  }
-
+ 
+ /* Default sensor mappings for PHN16 and other standard models */
  static const enum acer_wmi_predator_v4_sensor_id acer_wmi_temp_channel_to_sensor_id[] = {
     [0] = ACER_WMID_SENSOR_CPU_TEMPERATURE,
     [1] = ACER_WMID_SENSOR_GPU_TEMPERATURE,
     [2] = ACER_WMID_SENSOR_EXTERNAL_TEMPERATURE_2,
 };
-
-static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_id[] = {
+ 
+ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_id[] = {
     [0] = ACER_WMID_SENSOR_CPU_FAN_SPEED,
     [1] = ACER_WMID_SENSOR_GPU_FAN_SPEED,
 };
+ 
+ /* PHN14-51 specific sensor mappings */
+ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_temp_channel_to_sensor_id_phn14[] = {
+    [0] = ACER_WMID_SENSOR_PHN14_TEMP_1,
+    [1] = ACER_WMID_SENSOR_PHN14_TEMP_2,
+    [2] = ACER_WMID_SENSOR_PHN14_TEMP_3,
+ };
+ 
+ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_id_phn14[] = {
+    [0] = ACER_WMID_SENSOR_PHN14_CPU_FAN,
+    [1] = ACER_WMID_SENSOR_PHN14_GPU_FAN,
+ };
  
  static umode_t acer_wmi_hwmon_is_visible(const void *data,
                       enum hwmon_sensor_types type, u32 attr,
@@ -4284,57 +4322,133 @@ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_
  {
      enum acer_wmi_predator_v4_sensor_id sensor_id;
      const u64 *supported_sensors = data;
- 
-     switch (type) {
-     case hwmon_temp:
-         sensor_id = acer_wmi_temp_channel_to_sensor_id[channel];
-         break;
-     case hwmon_fan:
-         sensor_id = acer_wmi_fan_channel_to_sensor_id[channel];
-         break;
-     default:
-         return 0;
+     const enum acer_wmi_predator_v4_sensor_id *temp_sensors;
+     const enum acer_wmi_predator_v4_sensor_id *fan_sensors;
+     
+     /* Select appropriate sensor mapping based on model */
+     if (quirks->phn14_sensors) {
+         temp_sensors = acer_wmi_temp_channel_to_sensor_id_phn14;
+         fan_sensors = acer_wmi_fan_channel_to_sensor_id_phn14;
+     } else {
+         temp_sensors = acer_wmi_temp_channel_to_sensor_id;
+         fan_sensors = acer_wmi_fan_channel_to_sensor_id;
      }
  
-     if (*supported_sensors & BIT(sensor_id - 1))
-         return 0444;
+     switch (type) {
+    case hwmon_temp:
+        sensor_id = temp_sensors[channel];
+        break;
+    case hwmon_fan:
+        sensor_id = fan_sensors[channel];
+        break;
+    default:
+        return 0;
+    }
  
+    /* For PHN14-51, supported_sensors is already shifted down by 24 bits via FIELD_GET.
+     * Sensor IDs are absolute (0x19=25, 0x1A=26 etc), so we need to subtract 24 to get 
+     * the bit position in the shifted value. For standard models, sensor IDs start at 1.
+     */
+    if (quirks->phn14_sensors) {
+        /* PHN14 sensor IDs (0x19-0x21) need to be adjusted for the 24-bit shift */
+        if (*supported_sensors & BIT(sensor_id - 0x18 - 1))
+            return 0444;
+    } else {
+        /* Standard models: sensor IDs start at 1, so just subtract 1 */
+        if (*supported_sensors & BIT(sensor_id - 1))
+            return 0444;
+    }
+ 
+    return 0;
+ }
+ 
+ /* PHN14-51: Read fan RPM directly from EC (Embedded Controller) 
+  * WMI sensor reading doesn't work on PHN14-51, but EC exposes the data.
+  * Fan speeds are stored as 16-bit little-endian values in EC memory.
+  */
+ static int acer_phn14_read_ec_fan(int channel, long *val)
+ {
+     u8 lsb, msb;
+     u8 lsb_offset, msb_offset;
+     int ret;
+     
+     /* Determine EC offsets based on channel */
+     if (channel == 0) {
+         /* CPU fan */
+         lsb_offset = ACER_PHN14_EC_FAN_CPU_LSB;
+         msb_offset = ACER_PHN14_EC_FAN_CPU_MSB;
+     } else {
+         /* GPU fan */
+         lsb_offset = ACER_PHN14_EC_FAN_GPU_LSB;
+         msb_offset = ACER_PHN14_EC_FAN_GPU_MSB;
+     }
+     
+     /* Read EC bytes */
+     ret = ec_read(lsb_offset, &lsb);
+     if (ret < 0)
+         return ret;
+     
+     ret = ec_read(msb_offset, &msb);
+     if (ret < 0)
+         return ret;
+     
+     /* Combine as little-endian 16-bit value */
+    *val = lsb | (msb << 8);
+     
      return 0;
  }
  
  static int acer_wmi_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
-                    u32 attr, int channel, long *val)
+                     u32 attr, int channel, long *val)
  {
      u64 command = ACER_WMID_CMD_GET_PREDATOR_V4_SENSOR_READING;
      u64 result;
      int ret;
+     const enum acer_wmi_predator_v4_sensor_id *temp_sensors;
+     const enum acer_wmi_predator_v4_sensor_id *fan_sensors;
+     
+     /* Select appropriate sensor mapping based on model */
+     if (quirks->phn14_sensors) {
+         temp_sensors = acer_wmi_temp_channel_to_sensor_id_phn14;
+         fan_sensors = acer_wmi_fan_channel_to_sensor_id_phn14;
+     } else {
+         temp_sensors = acer_wmi_temp_channel_to_sensor_id;
+         fan_sensors = acer_wmi_fan_channel_to_sensor_id;
+     }
  
      switch (type) {
-     case hwmon_temp:
-         command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
-                       acer_wmi_temp_channel_to_sensor_id[channel]);
+    case hwmon_temp:
+        command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
+                      temp_sensors[channel]);
  
-         ret = WMID_gaming_get_sys_info(command, &result);
-         if (ret < 0)
-             return ret;
+        ret = WMID_gaming_get_sys_info(command, &result);
+        if (ret < 0)
+            return ret;
  
-         result = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
-         *val = result * MILLIDEGREE_PER_DEGREE;
-         return 0;
-     case hwmon_fan:
-         command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
-                       acer_wmi_fan_channel_to_sensor_id[channel]);
+        result = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
+        *val = result * MILLIDEGREE_PER_DEGREE;
+        return 0;
+    case hwmon_fan:
+        /* PHN14-51: Use EC direct reading instead of WMI */
+        if (quirks->phn14_sensors) {
+            return acer_phn14_read_ec_fan(channel, val);
+        }
+        
+        /* Standard WMI reading for other models */
+        command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
+                      fan_sensors[channel]);
  
-         ret = WMID_gaming_get_sys_info(command, &result);
-         if (ret < 0)
-             return ret;
+        ret = WMID_gaming_get_sys_info(command, &result);
+        if (ret < 0) {
+            return ret;
+        }
  
-         *val = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
-         return 0;
-     default:
-         return -EOPNOTSUPP;
-     }
- } 
+        *val = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
+        return 0;
+    default:
+        return -EOPNOTSUPP;
+    }
+ }
  
  static const struct hwmon_channel_info *const acer_wmi_hwmon_info[] = {
      HWMON_CHANNEL_INFO(temp,
@@ -4367,21 +4481,20 @@ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_
      int ret;
  
      ret = WMID_gaming_get_sys_info(ACER_WMID_CMD_GET_PREDATOR_V4_SUPPORTED_SENSORS, &result);
-     if (ret < 0)
-         return ret;
+    if (ret < 0)
+       return ret;
  
      /* Return early if no sensors are available */
-     supported_sensors = FIELD_GET(ACER_PREDATOR_V4_SUPPORTED_SENSORS_BIT_MASK, result);
-     if (!supported_sensors)
-         return 0;
- 
-     hwmon = devm_hwmon_device_register_with_info(dev, "acer",
-                              &supported_sensors,
-                              &acer_wmi_hwmon_chip_info,
-                              NULL);
+    supported_sensors = FIELD_GET(ACER_PREDATOR_V4_SUPPORTED_SENSORS_BIT_MASK, result);
+    if (!supported_sensors)
+        return 0;
+    hwmon = devm_hwmon_device_register_with_info(dev, "acer",
+                             &supported_sensors,
+                             &acer_wmi_hwmon_chip_info,
+                             NULL);
  
      if (IS_ERR(hwmon)) {
-         dev_err(dev, "Could not register acer hwmon device\n");
+        dev_err(dev, "Could not register acer hwmon device\n");
          return PTR_ERR(hwmon);
      }
  
