@@ -12,23 +12,24 @@ all:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 	# --- auto sign block ---
-	
-	#finding sign-file tool
+	# Check if keys exist before attempting to sign
+	@if [ -f "$(HOME)/module-signing/MOK.priv" ] && [ -f "$(HOME)/module-signing/MOK.der" ]; then \
 	if [ -x "/lib/modules/$(KVER)/build/scripts/sign-file" ]; then \
-		SIGN_TOOL="/lib/modules/$(KVER)/build/scripts/sign-file"; \
+	SIGN_TOOL="/lib/modules/$(KVER)/build/scripts/sign-file"; \
 	elif [ -x "/usr/src/linux-headers-$(KVER)/scripts/sign-file" ]; then \
-		SIGN_TOOL="/usr/src/linux-headers-$(KVER)/scripts/sign-file"; \
+	SIGN_TOOL="/usr/src/linux-headers-$(KVER)/scripts/sign-file"; \
 	else \
-		echo "ERROR: sign-file tool not found"; \
-		exit 1; \
+	echo "ERROR: sign-file tool not found, but MOK keys exist."; \
+	exit 1; \
 	fi; \
-
-	# assuming keys are located in a ~/module-signing folder named MOK....
 	echo "Signing module linuwu_sense.ko using $$SIGN_TOOL"; \
 	sudo $$SIGN_TOOL sha256 \
-		$(HOME)/module-signing/MOK.priv \  
-		$(HOME)/module-signing/MOK.der \
-		$(PWD)/src/linuwu_sense.ko
+	$(HOME)/module-signing/MOK.priv \
+	$(HOME)/module-signing/MOK.der \
+	$(PWD)/src/linuwu_sense.ko; \
+	else \
+	echo "MOK keys not found in ~/module-signing/. Skipping module signing (Common for non-Secure Boot)."; \
+	fi
 	# --- end auto sign block ---
 
 clean:
