@@ -1,4 +1,4 @@
-# Unofficial Linux Kernel Module for Acer Gaming RGB Keyboard Backlight and Turbo Mode (Acer Predator , Nitro)
+# Unofficial Linux Kernel Module for Acer Gaming RGB Keyboard Backlight and Turbo Mode (Acer Predator & Nitro)
 The code base is still in its early stages, as I’ve just started working on developing this kernel module. It's a bit messy at the moment, but I’m hopeful that, with your help, we can collaborate to improve its structure and make it more organized over time.
 
 Inspired by [acer-predator-turbo](https://github.com/JafarAkhondali/acer-predator-turbo-and-rgb-keyboard-linux-module), which has a similar goal, this project was born out of my own challenges. I faced issues detecting the Turbo key and ended up using [acer_wmi](https://github.com/torvalds/linux/blob/master/drivers/platform/x86/acer-wmi.c), but it lacked key features like RGB , custom fan support, battery limiter, and more. As a result, I decided to implement these missing features in my own project.
@@ -9,7 +9,7 @@ To begin, identify your current kernel version:
 uname -r
 ```
 
-Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel version (6.12,6.13 ([previous code base](https://github.com/0x7375646F/Linuwu-Sense/tree/v6.13)),6.14) zen. 
+Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel versions (6.12, 6.13 ([previous code base](https://github.com/0x7375646F/Linuwu-Sense/tree/v6.13)), 6.14) zen. 
 For Arch Linux:
 ```bash
 sudo pacman -S linux-headers
@@ -27,12 +27,12 @@ To Uninstall:
 make uninstall
 ```
 > **⚠️ Warning!**
-> ## Use at your own risk! This driver is independently developed through reverse engineering the official PredatorSense app, without any involvement from Acer. It interacts with low-level WMI methods, which may not be tested across all models.
+> ## Use at your own risk! This driver is being independently developed through reverse engineering the official PredatorSense app, without any involvement from Acer. It interacts with low-level WMI methods, which may not be tested across all models.
 
 ## 🛠️ Usage
 # Example Usage and Configuration
 
-Thermal profiles can be easily switched with a single click! 😎 For battery mode, you can choose between Eco and Balanced, while when plugged into AC, you have the options for Quiet, Balanced, Performance, and Turbo. ⚡💻 Each profile will be different for battery and AC, and the thermal and fan settings will automatically adjust based on your current power source. Customize it to fit your preferences! 🌟
+Thermal profiles can be easily switched with a single click! 😎 On battery, you can choose between Eco and Balanced, and while plugged into AC, you can choose between Quiet, Balanced, Performance, and Turbo. ⚡💻 Each profile will be different for battery and AC, and the thermal and fan settings will automatically adjust based on your current power source. Customize it to fit your preferences! 🌟
 
 ---
 
@@ -40,31 +40,31 @@ For **Predator** laptops, the following path is used: `/sys/module/linuwu_sense/
 
 For **Nitro** laptops, the following path is used: `/sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/nitro_sense`
 
-predator_sense – This directory includes all the features, excluding the custom boot logo functionality.
+predator_sense – This directory includes all features, excluding the custom boot logo functionality.
 four_zoned_kb – If your keyboard is four-zoned, this directory provides support for it. Unfortunately, there is no support for per-key RGB keyboards.
 Here is how to interact with the Virtual Filesystems (VFS) mounted in this path:
 
-### **0. Thermal Profiles (Nitro users especially who don't have switch key) 🚀**
+### **0. Thermal Profiles (Especially for Nitro users who don't have switch key) 🚀**
 
-Some acer nitro laptops don't come up with the thermal profile switch button in this case we manually need to set it:
+Some Acer Nitro laptops don't come with the thermal profile switch button, so it needs to be set manually:
 
 To probe the current thermal profile:
 
 `cat /sys/firmware/acpi/platform_profile`
 
-To check the supported thermal profile:
+To check the supported thermal profiles:
 
 `cat /sys/firmware/acpi/platform_profile_choices`
 
-To switch the platform profile:
+To switch the thermal profile to balanced:
 
 `echo balanced | sudo tee /sys/firmware/acpi/platform_profile`
 
-Replace the balanced with the supported profile you have.
+You can replace 'balanced' with a supported profile of your choosing.
 
 #### **1. Backlight Timeout ⏰**
 
-This feature turns off the keyboard RGB after 30 seconds of idle mode.
+This feature automatically disables the keyboard backlight after 30 seconds of inactivity.
 
 - **0** – Disabled
 - **1** – Enabled
@@ -98,7 +98,7 @@ To change the state:
 
 #### **3. Battery Limiter ⚡**
 
-Limits battery charging to 80%, preserving battery health for laptops primarily used while plugged into AC power.
+Limits battery charging to 80%, preserving battery health for laptops (especially useful when primarily used while plugged into AC power).
 
 - **1** – Enabled
 - **0** – Disabled
@@ -195,7 +195,7 @@ This mode allows you to set a specific RGB color for each of the four keyboard z
 - **Parameters:**
     
     - The `per_zone_mode` file accepts four parameters, one for each zone, separated by commas.
-    - The `per_zone_mode` also accepts brightness value.
+    - The `per_zone_mode` also accepts a brightness value.
     - Each parameter represents the RGB value for a specific zone in the format `RRGGBB`.
 - **Example:**
 
@@ -256,14 +256,14 @@ The thermal and fan profiles will be saved and loaded on each reboot, ensuring t
 - [GUI LinuwuSense By KumarVivek](https://github.com/kumarvivek1752/Linuwu-Sense-GUI/tree/main)
 
 ## 🚧 Roadmap:
-- [x] GUI for keyboard rgb controls to make it noob friendly.
+- [x] GUI for keyboard RGB controls to make it noob friendly.
 - [x] Module Persistence After Reboot.
 - [ ] Custom Boot Logo Feature Support.
-- [ ] More device support currently only ( PHN16-71 ) is fully supported.
+- [ ] Improve device support (currently only the PHN16-71 is fully supported).
 
 ## License
 GNU General Public License v3
 
 ### 💖 Donations
-Donations are completely optional but show your love for open-source development and motivate me to add more features to this project!
+Donations are completely optional but you can show your love for open-source development and help motivate me to add more features to this project!
 USDT (BEP20 - BNB Smart Chain): 0xDA7aa42B9Fc3041F20f4Ec828A70E9bDD54A6822
