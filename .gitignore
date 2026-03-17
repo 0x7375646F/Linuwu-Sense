@@ -1,0 +1,31 @@
+# Build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+.*.cmd
+.tmp_versions/
+Module.symvers
+modules.order
+*.order
+
+# ACPI dumps (personal hardware info)
+*.dat
+*.dsl
+*.aml
+
+# Editor files
+*~
+*.swp
+*.swo
+.*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
