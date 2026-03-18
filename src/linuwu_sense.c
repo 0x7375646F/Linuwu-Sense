@@ -436,9 +436,12 @@ enum acer_wmi_predator_v4_oc {
          }
 
  
-     if (quirks->predator_v4)
-         interface->capability |= ACER_CAP_PLATFORM_PROFILE |
-                      ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
+    if (quirks->predator_v4 == 1)
+                interface->capability |= ACER_CAP_PLATFORM_PROFILE |
+                ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
+                else if (quirks->predator_v4 == 2)
+                /* PredatorSense v3 firmware: thermal profile WMI methods not implemented */
+                interface->capability |= ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
      
      /* Includes all feature that predatorv4 have*/
      if (quirks->nitro_v4)
@@ -472,6 +475,12 @@ enum acer_wmi_predator_v4_oc {
      .mailled = 1,
  };
  
+ static struct quirk_entry quirk_acer_predator_ph315_52 = {
+     .turbo = 1,
+     .predator_v4 = 2,
+     .four_zone_kb = 1,
+ };
+
  static struct quirk_entry quirk_acer_predator_ph315_53 = {
      .turbo = 1,
      .cpu_fans = 1,
@@ -768,6 +777,15 @@ enum acer_wmi_predator_v4_oc {
              DMI_MATCH(DMI_PRODUCT_NAME, "TravelMate 4200"),
          },
          .driver_data = &quirk_acer_travelmate_2490,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PH315-52",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_BOARD_NAME, "QX50_CMS"),
+         },
+         .driver_data = &quirk_acer_predator_ph315_52,
      },
      {
          .callback = dmi_matched,
@@ -2325,7 +2343,7 @@ enum acer_wmi_predator_v4_oc {
  {
      const int max_retries = 10;
      int delay_ms = 100;
-     if (!quirks->predator_v4 && !quirks->nitro_sense && !quirks->nitro_v4)
+     if (quirks->predator_v4 != 1 && quirks->nitro_sense != 1 && !quirks->nitro_v4)
          return 0;
      for (int attempt = 1; attempt <= max_retries; attempt++) {
          platform_profile_device = devm_platform_profile_register(
