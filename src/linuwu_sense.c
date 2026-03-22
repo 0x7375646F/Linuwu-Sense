@@ -823,6 +823,15 @@ enum acer_wmi_predator_v4_oc {
          },
          .driver_data = &quirk_acer_predator_v4,
      },
+	 {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PHN16S-71",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16S-71"),
+         },
+         .driver_data = &quirk_acer_predator_v4,
+     },
      {
          .callback = set_force_caps,
          .ident = "Acer Aspire Switch 10E SW3-016",
