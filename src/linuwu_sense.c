@@ -765,12 +765,12 @@ enum acer_wmi_predator_v4_oc {
          },
          .driver_data = &quirk_acer_predator_ph315_53,
      },
-     {
+    {
          .callback = dmi_matched,
-         .ident = "Acer Predator PHN16-71",
+         .ident = "Acer Predator PHIN16-71",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16-71"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHIN16-71"),
          },
          .driver_data = &quirk_acer_predator_phn16_71,
      },
@@ -802,11 +802,20 @@ enum acer_wmi_predator_v4_oc {
         .driver_data = &quirk_acer_predator_phn16s_71,
      },
      {
+        .callback = dmi_matched,
+        .ident = "Acer Predator PHIN16S-71",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHIN16S-71")
+        },
+        .driver_data = &quirk_acer_predator_phn16s_71,
+     },
+     {
          .callback = dmi_matched,
-         .ident = "Acer Predator PH16-71",
+         .ident = "Acer Predator PHN16S-71",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH16-71"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16S-71"),
          },
          .driver_data = &quirk_acer_predator_v4,
      },
