@@ -618,6 +618,15 @@ enum acer_wmi_predator_v4_oc {
     },
      {
          .callback = dmi_matched,
+         .ident = "Acer Nitro AN517-51",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN517-51"),
+         },
+         .driver_data = &quirk_acer_nitro_an517_51,
+     },
+     {
+         .callback = dmi_matched,
          .ident = "Acer Nitro AN16-41",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
