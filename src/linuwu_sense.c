@@ -780,6 +780,15 @@ enum acer_wmi_predator_v4_oc {
      },
      {
          .callback = dmi_matched,
+         .ident = "Acer Predator PH315-52",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH315-52"),
+         },
+         .driver_data = &quirk_acer_predator_ph315_53,
+     },
+     {
+         .callback = dmi_matched,
          .ident = "Acer Predator PHN16-71",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
