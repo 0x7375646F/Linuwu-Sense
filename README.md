@@ -249,7 +249,19 @@ The `four_zone_mode` controls advanced RGB effects for your keyboard, requiring 
     - `0`: Red (black for Neon)
     - `0`: Green (black for Neon)
     - `0`: Blue (black for Neon)
- 
+
+### **⚠️ Note for 2025+ models (ENEK5130 keyboards)**
+
+On some newer Acer laptops the keyboard RGB is no longer wired to the WMI interface this module uses. On these machines both `per_zone_mode` and `four_zone_mode` accept your writes without any error, but the LEDs never change and the keyboard stays on its firmware default wave. Confirmed affected so far: Predator Helios Neo 16S AI (PHN16S-71) and Nitro ANV16S-41. On the Predator Helios Neo 16 (PHN16-73) the dynamic effects still work over WMI but static colors do not.
+
+The RGB on these models is handled by a separate ENE KB5130 controller on i2c-HID. You can check whether your laptop has it:
+
+```bash
+grep -l ENEK5130 /sys/class/hidraw/*/device/uevent
+```
+
+If that prints a path, keyboard RGB on your machine works through HID feature reports on that hidraw device instead of this module. The protocol and a standalone userspace tool are documented at [kbrgb](https://github.com/shwetankg07/kbrgb) (see its `PROTOCOL.md`). Everything else in Linuwu-Sense (fans, thermal profiles, battery limiter and so on) still works normally on these models, so the two can be used side by side.
+
 The thermal and fan profiles will be saved and loaded on each reboot, ensuring that the settings remain persistent across restarts.
 ## GUI:
 - [Div Acer Manager Max By PXDiv](https://github.com/PXDiv/Div-Acer-Manager-Max)
