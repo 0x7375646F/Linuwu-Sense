@@ -2132,18 +2132,25 @@ enum acer_wmi_predator_v4_oc {
  static int acer_toggle_turbo(void)
  {
      u64 turbo_led_state;
- 
+     acpi_status status;
+
      /* Get current state from turbo button */
-     if (ACPI_FAILURE(WMID_gaming_get_u64(&turbo_led_state, ACER_CAP_TURBO_LED)))
+     status = WMID_gaming_get_u64(&turbo_led_state, ACER_CAP_TURBO_LED);
+     if (ACPI_FAILURE(status)) {
+         pr_err("Failed to read turbo LED state, ignoring hotkey press: %s\n",
+             acpi_format_exception(status));
          return -1;
- 
+     }
+
      if (turbo_led_state) {
          /* Turn off turbo led */
-         WMID_gaming_set_u64(0x1, ACER_CAP_TURBO_LED);
- 
+         status = WMID_gaming_set_u64(0x1, ACER_CAP_TURBO_LED);
+         if (ACPI_FAILURE(status))
+             pr_err("Failed to turn off turbo LED: %s\n", acpi_format_exception(status));
+
          /* Set FAN mode to auto */
          WMID_gaming_set_fan_mode(0x1);
- 
+
          /* Set OC to normal */
          if (has_cap(ACER_CAP_TURBO_OC)) {
              WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_OC_1,
@@ -2153,11 +2160,13 @@ enum acer_wmi_predator_v4_oc {
          }
      } else {
          /* Turn on turbo led */
-         WMID_gaming_set_u64(0x10001, ACER_CAP_TURBO_LED);
- 
+         status = WMID_gaming_set_u64(0x10001, ACER_CAP_TURBO_LED);
+         if (ACPI_FAILURE(status))
+             pr_err("Failed to turn on turbo LED: %s\n", acpi_format_exception(status));
+
          /* Set FAN mode to turbo */
          WMID_gaming_set_fan_mode(0x2);
- 
+
          /* Set OC to turbo mode */
          if (has_cap(ACER_CAP_TURBO_OC)) {
              WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_OC_1,

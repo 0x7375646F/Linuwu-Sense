@@ -7,6 +7,8 @@ PWD   := $(shell pwd)
 MDIR  := /lib/modules/$(KVER)/kernel/drivers/platform/x86
 MODNAME := linuwu_sense
 REAL_USER := $(shell echo $${SUDO_USER:-$$(whoami)})
+PKGVER  := $(shell sed -n 's/^PACKAGE_VERSION="\(.*\)"/\1/p' dkms.conf)
+SRCDIR  := /usr/src/$(MODNAME)-$(PKGVER)
 
 all:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
@@ -53,15 +55,25 @@ uninstall:
 	fi
 	@sudo rm -f /etc/tmpfiles.d/$(MODNAME).conf
 	@sudo rm -f $(MDIR)/$(MODNAME).ko
+	-sudo dkms remove -m $(MODNAME) -v $(PKGVER) --all
+	@sudo rm -rf $(SRCDIR)
 	@sudo depmod -a
 	@echo "Uninstalled $(MODNAME) and cleaned up related configuration."
 
-install: all
+# Installs via DKMS, so the module is automatically rebuilt for every
+# future kernel upgrade instead of only working for $(KVER) as of today.
+install:
+	@command -v dkms >/dev/null 2>&1 || { echo "dkms not found. Install it first (e.g. sudo apt install dkms)."; exit 1; }
 	@sudo rmmod acer_wmi 2>/dev/null || true
 	@echo "blacklist acer_wmi" | sudo tee /etc/modprobe.d/blacklist-acer_wmi.conf > /dev/null
-	sudo install -d $(MDIR)
-	sudo install -m 644 src/$(MODNAME).ko $(MDIR)
-	sudo depmod -a
+	-sudo dkms remove -m $(MODNAME) -v $(PKGVER) --all
+	@sudo rm -rf $(SRCDIR)
+	sudo mkdir -p $(SRCDIR)
+	sudo cp -a dkms.conf dkms-sign.sh Makefile src $(SRCDIR)/
+	sudo find $(SRCDIR)/src \( -name '*.o' -o -name '*.ko' -o -name '*.mod*' -o -name '*.cmd' -o -name 'Module.symvers' -o -name 'modules.order' \) -delete
+	sudo dkms add -m $(MODNAME) -v $(PKGVER)
+	sudo dkms build -m $(MODNAME) -v $(PKGVER)
+	sudo dkms install -m $(MODNAME) -v $(PKGVER) --force
 	@echo "$(MODNAME)" | sudo tee /etc/modules-load.d/$(MODNAME).conf > /dev/null
 	sudo modprobe $(MODNAME)
 	@sleep 2
