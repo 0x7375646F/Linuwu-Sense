@@ -254,6 +254,7 @@ The thermal and fan profiles will be saved and loaded on each reboot, ensuring t
 ## GUI:
 - [Div Acer Manager Max By PXDiv](https://github.com/PXDiv/Div-Acer-Manager-Max)
 - [GUI LinuwuSense By KumarVivek](https://github.com/kumarvivek1752/Linuwu-Sense-GUI/tree/main)
+- [RuSense By r3nv-dev](https://github.com/r3nv-dev/rusense) — Rust TUI + GUI (Tauri)
 
 ## 🚧 Roadmap:
 - [x] GUI for keyboard rgb controls to make it noob friendly.
