@@ -180,6 +180,38 @@ To change the state:
 `echo 20 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/usb_charging`
 
 ---
+
+#### **8. Turbo State 🌀**
+
+Read-only attribute exposing the current turbo hotkey state, for laptops that use the turbo-toggle fan mechanism (e.g. Predator PH315-53/PH315-52) instead of the `predator_sense`/`nitro_sense` thermal-profile interface.
+
+- **0** – Auto fan mode
+- **1** – Turbo fan mode
+
+`cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/turbo_sense/turbo_state`
+
+The driver calls `sysfs_notify()` on this file every time the turbo hotkey is toggled, so userspace can `poll()` on it instead of polling in a loop. This is what powers the **Turbo OSD** popup below.
+
+##### Turbo OSD popup 🟢⚪
+
+`osd/linuwu_turbo_osd.py` is a small GTK3 script that shows a transient grey/green popup at the top of the screen for 3 seconds whenever turbo mode is toggled on or off. It blocks on `turbo_state` rather than polling, so it uses no CPU while idle.
+
+Requirements: `python3-gi` with GTK 3 (`sudo apt install python3-gi gir1.2-gtk-3.0` on Debian/Ubuntu/Mint).
+
+To try it directly:
+```bash
+python3 osd/linuwu_turbo_osd.py
+```
+
+To run it automatically on login via a systemd user service:
+```bash
+mkdir -p ~/.local/share/linuwu-sense ~/.config/systemd/user
+cp osd/linuwu_turbo_osd.py ~/.local/share/linuwu-sense/
+cp osd/linuwu-turbo-osd.service ~/.config/systemd/user/
+systemctl --user enable --now linuwu-turbo-osd.service
+```
+
+---
 ## 💻 Keyboard Configuration 
 ### **Directory: `four_zoned_kb`**
 

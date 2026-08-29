@@ -414,7 +414,8 @@ enum acer_wmi_predator_v4_oc {
  };
  
  static struct quirk_entry *quirks;
- 
+ static struct platform_device *acer_platform_device;
+
  static void __init set_quirks(void)
  {
      if (quirks->mailled)
@@ -2165,6 +2166,10 @@ enum acer_wmi_predator_v4_oc {
                               ACER_WMID_OC_TURBO);
          }
      }
+
+     if (acer_platform_device)
+         sysfs_notify(&acer_platform_device->dev.kobj, "turbo_sense", "turbo_state");
+
      return turbo_led_state;
  }
  
@@ -3627,7 +3632,30 @@ enum acer_wmi_predator_v4_oc {
  static struct attribute_group nitro_sense_v4_attr_group = {
      .name = "nitro_sense", .attrs = predator_sense_attrs
  };
- 
+
+ /*
+  * turbo state (read-only). Userspace can poll(POLLPRI|POLLERR) on this
+  * file to be woken up on every turbo hotkey toggle instead of scraping
+  * dmesg; sysfs_notify() is called from acer_toggle_turbo().
+  */
+ static ssize_t turbo_state_show(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     u64 turbo_led_state;
+
+     if (ACPI_FAILURE(WMID_gaming_get_u64(&turbo_led_state, ACER_CAP_TURBO_LED)))
+         return -EIO;
+
+     return sprintf(buf, "%d\n", turbo_led_state ? 1 : 0);
+ }
+ static struct device_attribute turbo_state = __ATTR(turbo_state, 0444, turbo_state_show, NULL);
+ static struct attribute *turbo_sense_attrs[] = {
+     &turbo_state.attr,
+     NULL
+ };
+ static struct attribute_group turbo_sense_attr_group = {
+     .name = "turbo_sense", .attrs = turbo_sense_attrs
+ };
+
  /* nitro sense attributes */
  static struct attribute *nitro_sense_attrs[] = {
      &fan_speed.attr,
@@ -4106,7 +4134,13 @@ enum acer_wmi_predator_v4_oc {
      err = acer_rfkill_init(&device->dev);
      if (err)
          goto error_rfkill;
- 
+
+     if (has_cap(ACER_CAP_TURBO_LED)) {
+         err = sysfs_create_group(&device->dev.kobj, &turbo_sense_attr_group);
+         if (err)
+             goto error_turbo_sense;
+     }
+
      if (has_cap(ACER_CAP_PLATFORM_PROFILE)) {
          err = acer_platform_profile_setup(device);
          if (err)
@@ -4161,6 +4195,8 @@ enum acer_wmi_predator_v4_oc {
      return err;
  error_predator_sense:
      return err;
+ error_turbo_sense:
+     return err;
  error_mailled:
      return err;
  }
@@ -4172,6 +4208,8 @@ enum acer_wmi_predator_v4_oc {
          acer_led_exit();
      if (has_cap(ACER_CAP_BRIGHTNESS))
          acer_backlight_exit();
+     if (has_cap(ACER_CAP_TURBO_LED))
+         sysfs_remove_group(&device->dev.kobj, &turbo_sense_attr_group);
      if (has_cap(ACER_CAP_PREDATOR_SENSE)) {
          sysfs_remove_group(&device->dev.kobj, &preadtor_sense_attr_group);
          acer_predator_state_save();
@@ -4260,9 +4298,7 @@ enum acer_wmi_predator_v4_oc {
      .remove = acer_platform_remove,
      .shutdown = acer_platform_shutdown,
  };
- 
- static struct platform_device *acer_platform_device;
- 
+
  static void remove_debugfs(void)
  {
      debugfs_remove_recursive(interface->debug.root);
