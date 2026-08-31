@@ -46,6 +46,10 @@ uninstall:
 	fi
 	@sudo -u $(REAL_USER) rm -f $(REAL_HOME)/.config/systemd/user/linuwu-turbo-osd.service
 	@sudo -u $(REAL_USER) rm -f $(REAL_HOME)/.local/share/linuwu-sense/linuwu_turbo_osd.py
+	@echo "Removing Penguin Sense app entry for $(REAL_USER)..."
+	@sudo -u $(REAL_USER) rm -f $(REAL_HOME)/.local/share/applications/penguin-sense.desktop
+	@sudo -u $(REAL_USER) rm -f $(REAL_HOME)/.local/share/icons/hicolor/128x128/apps/penguin-sense.png
+	@sudo -u $(REAL_USER) rm -f $(REAL_HOME)/.local/share/linuwu-sense/penguin_sense.py
 	@sudo rm -f /etc/modules-load.d/$(MODNAME).conf
 	@sudo rm -f /etc/modprobe.d/blacklist-acer_wmi.conf
 	@sudo systemctl stop linuwu_sense.service
@@ -139,5 +143,22 @@ install:
 	else \
 		echo "No turbo hotkey detected on this hardware; skipping OSD popup setup."; \
 	fi
+	@echo "Setting up Penguin Sense app..."
+	@sudo -u $(REAL_USER) mkdir -p $(REAL_HOME)/.local/share/linuwu-sense
+	@sudo -u $(REAL_USER) cp osd/penguin_sense.py $(REAL_HOME)/.local/share/linuwu-sense/
+	@sudo -u $(REAL_USER) mkdir -p $(REAL_HOME)/.local/share/applications
+	@sed "s#@PENGUIN_SENSE_SCRIPT@#$(REAL_HOME)/.local/share/linuwu-sense/penguin_sense.py#" \
+		osd/penguin-sense.desktop | sudo -u $(REAL_USER) tee $(REAL_HOME)/.local/share/applications/penguin-sense.desktop > /dev/null
+	@if [ -f osd/penguin-sense.png ]; then \
+		sudo -u $(REAL_USER) mkdir -p $(REAL_HOME)/.local/share/icons/hicolor/128x128/apps; \
+		sudo -u $(REAL_USER) cp osd/penguin-sense.png $(REAL_HOME)/.local/share/icons/hicolor/128x128/apps/; \
+		if [ ! -f $(REAL_HOME)/.local/share/icons/hicolor/index.theme ] && [ -f /usr/share/icons/hicolor/index.theme ]; then \
+			sudo -u $(REAL_USER) cp /usr/share/icons/hicolor/index.theme $(REAL_HOME)/.local/share/icons/hicolor/index.theme; \
+		fi; \
+	else \
+		echo "Note: osd/penguin-sense.png not found; Penguin Sense will show a generic icon."; \
+	fi
+	-sudo -u $(REAL_USER) update-desktop-database $(REAL_HOME)/.local/share/applications 2>/dev/null
+	-sudo -u $(REAL_USER) gtk-update-icon-cache -f $(REAL_HOME)/.local/share/icons/hicolor 2>/dev/null
 	@echo "Module $(MODNAME) installed and configured to load at boot."
 
