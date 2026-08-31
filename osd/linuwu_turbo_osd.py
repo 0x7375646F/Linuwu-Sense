@@ -109,27 +109,44 @@ class TurboOSD:
 
 
 def watch(osd: TurboOSD):
+    # If linuwu_sense is reloaded (kernel upgrade, dkms rebuild, manual
+    # rmmod/insmod) while we're running, our fd points at a sysfs node
+    # that no longer exists. Rather than try to detect and reconnect to
+    # the *new* node in-process, we exit and let the systemd unit's
+    # Restart=on-failure bring up a fresh process, which reopens
+    # SYSFS_PATH from scratch -- so it self-heals even if the module
+    # isn't back yet (RestartSec keeps retrying).
     try:
         fd = os.open(SYSFS_PATH, os.O_RDONLY)
+
+        def read_value():
+            os.lseek(fd, 0, os.SEEK_SET)
+            return os.read(fd, 16).strip()
+
+        last_value = read_value()
     except OSError as exc:
         print(f"linuwu-turbo-osd: cannot open {SYSFS_PATH}: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    def read_value():
-        os.lseek(fd, 0, os.SEEK_SET)
-        return os.read(fd, 16).strip()
-
-    last_value = read_value()
-
     def on_ready(source, condition):
+        # sysfs_notify() wakes pollers with IO_PRI *and* IO_ERR together --
+        # that IO_ERR is not an error, it's just how kernfs signals "the
+        # value changed" (see kernfs_fop_poll()). Do not treat it as a sign
+        # the node is gone; only a failed read (ENODEV once the attribute
+        # group is actually removed) means that.
         nonlocal last_value
-        value = read_value()
+        try:
+            value = read_value()
+        except OSError as exc:
+            print(f"linuwu-turbo-osd: lost {SYSFS_PATH} ({exc}); exiting for systemd to restart us",
+                  file=sys.stderr)
+            os._exit(1)
         if value != last_value:
             last_value = value
             osd.show(value == b"1")
         return True
 
-    GLib.io_add_watch(fd, GLib.IO_PRI | GLib.IO_ERR, on_ready)
+    GLib.io_add_watch(fd, GLib.IO_PRI | GLib.IO_ERR | GLib.IO_HUP, on_ready)
 
 
 def main():

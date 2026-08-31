@@ -7,6 +7,7 @@ PWD   := $(shell pwd)
 MDIR  := /lib/modules/$(KVER)/kernel/drivers/platform/x86
 MODNAME := linuwu_sense
 REAL_USER := $(shell echo $${SUDO_USER:-$$(whoami)})
+REAL_HOME := $(shell getent passwd $(REAL_USER) | cut -d: -f6)
 PKGVER  := $(shell sed -n 's/^PACKAGE_VERSION="\(.*\)"/\1/p' dkms.conf)
 SRCDIR  := /usr/src/$(MODNAME)-$(PKGVER)
 
@@ -38,6 +39,13 @@ clean:
 	$(MAKE) -C $(KDIR) M=$(PWD) clean
 
 uninstall:
+	@echo "Removing Turbo OSD popup service for $(REAL_USER)..."
+	@uid=$$(id -u $(REAL_USER) 2>/dev/null); \
+	if [ -n "$$uid" ]; then \
+		sudo -u $(REAL_USER) XDG_RUNTIME_DIR=/run/user/$$uid systemctl --user disable --now linuwu-turbo-osd.service 2>/dev/null || true; \
+	fi
+	@sudo -u $(REAL_USER) rm -f $(REAL_HOME)/.config/systemd/user/linuwu-turbo-osd.service
+	@sudo -u $(REAL_USER) rm -f $(REAL_HOME)/.local/share/linuwu-sense/linuwu_turbo_osd.py
 	@sudo rm -f /etc/modules-load.d/$(MODNAME).conf
 	@sudo rm -f /etc/modprobe.d/blacklist-acer_wmi.conf
 	@sudo systemctl stop linuwu_sense.service
@@ -75,6 +83,10 @@ install:
 	sudo dkms build -m $(MODNAME) -v $(PKGVER)
 	sudo dkms install -m $(MODNAME) -v $(PKGVER) --force
 	@echo "$(MODNAME)" | sudo tee /etc/modules-load.d/$(MODNAME).conf > /dev/null
+	# Force a real reload: if any linuwu_sense.ko is already loaded (e.g. a
+	# manually insmod'd test build), plain modprobe below is a no-op and
+	# you'd silently keep running the old one instead of what was just built.
+	-sudo rmmod $(MODNAME) 2>/dev/null
 	sudo modprobe $(MODNAME)
 	@sleep 2
 	@sudo cp linuwu_sense.service /etc/systemd/system/
@@ -112,6 +124,20 @@ install:
 		sudo systemd-tmpfiles --create $$conf_file; \
 	else \
 		echo "Warning: Could not detect predator_sense or nitro_sense in sysfs."; \
+	fi
+	@echo "Setting up Turbo OSD popup..."
+	@if [ -d "/sys/module/$(MODNAME)/drivers/platform:acer-wmi/acer-wmi/turbo_sense" ]; then \
+		echo "Turbo hotkey detected, installing OSD popup service for $(REAL_USER)..."; \
+		sudo -u $(REAL_USER) mkdir -p $(REAL_HOME)/.local/share/linuwu-sense; \
+		sudo -u $(REAL_USER) cp osd/linuwu_turbo_osd.py $(REAL_HOME)/.local/share/linuwu-sense/; \
+		sudo -u $(REAL_USER) mkdir -p $(REAL_HOME)/.config/systemd/user; \
+		sudo -u $(REAL_USER) cp osd/linuwu-turbo-osd.service $(REAL_HOME)/.config/systemd/user/; \
+		uid=$$(id -u $(REAL_USER)); \
+		sudo -u $(REAL_USER) XDG_RUNTIME_DIR=/run/user/$$uid systemctl --user daemon-reload; \
+		sudo -u $(REAL_USER) XDG_RUNTIME_DIR=/run/user/$$uid systemctl --user enable --now linuwu-turbo-osd.service || \
+			echo "Note: could not start linuwu-turbo-osd.service right now (no active graphical session for $(REAL_USER)?); it is enabled and will start on next login. Requires python3-gi (PyGObject) + GTK3."; \
+	else \
+		echo "No turbo hotkey detected on this hardware; skipping OSD popup setup."; \
 	fi
 	@echo "Module $(MODNAME) installed and configured to load at boot."
 

@@ -237,23 +237,19 @@ The driver calls `sysfs_notify()` on this file every time the turbo hotkey is to
 
 `osd/linuwu_turbo_osd.py` is a small GTK3 script that shows a transient grey/green popup at the top of the screen for 3 seconds whenever turbo mode is toggled on or off. It blocks on `turbo_state` rather than polling, so it uses no CPU while idle.
 
-Requirements: `python3-gi` with GTK 3 (`sudo apt install python3-gi gir1.2-gtk-3.0` on Debian/Ubuntu/Mint).
+Requirements: `python3-gi` with GTK 3 (`sudo apt install python3-gi gir1.2-gtk-3.0` on Debian/Ubuntu/Mint) — install this *before* `sudo make install` so the popup can start immediately.
 
-To try it directly:
+On hardware where `turbo_sense` exists (e.g. PH315-53 / PH315-52), `sudo make install` automatically installs `linuwu_turbo_osd.py` to `~/.local/share/linuwu-sense/`, installs the systemd `--user` unit to `~/.config/systemd/user/`, and runs `systemctl --user enable --now linuwu-turbo-osd.service` for you — no manual steps needed.
+
+Check it's running with `systemctl --user status linuwu-turbo-osd.service`. If it shows as enabled but not started, log out and back in (there was no active graphical session at install time) or start it manually:
+```bash
+systemctl --user start linuwu-turbo-osd.service
+```
+
+To try the popup directly without the service:
 ```bash
 python3 osd/linuwu_turbo_osd.py
 ```
-
-To run it automatically on login via a systemd `--user` service — **this step does not happen automatically as part of `make install`, it must be done separately**:
-```bash
-mkdir -p ~/.local/share/linuwu-sense ~/.config/systemd/user
-cp osd/linuwu_turbo_osd.py ~/.local/share/linuwu-sense/
-cp osd/linuwu-turbo-osd.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now linuwu-turbo-osd.service
-```
-
-Check it's running with `systemctl --user status linuwu-turbo-osd.service`.
 
 ## 💻 Keyboard Configuration
 
@@ -338,11 +334,11 @@ If `dkms status` doesn't show your current kernel, DKMS wasn't able to rebuild i
 Confirm the module is actually loaded and receiving the key (`sudo dmesg | grep -i turbo` while pressing the key should print `pressed turbo button - N`). If a press is logged but nothing happens, check `dmesg` for a `linuwu_sense: Failed to ...` error — the driver logs a `pr_err` whenever the underlying WMI call to read or set the turbo LED fails, so a firmware/EC-level failure will now show up there instead of failing silently.
 
 **The Turbo OSD popup never appears.**
-The popup is a separate opt-in component (`osd/linuwu_turbo_osd.py`) — adding the driver support for it does *not* install or start it. Check whether it's actually running:
+`sudo make install` installs and enables `linuwu-turbo-osd.service` automatically on hardware with `turbo_sense`. Check whether it's actually running:
 ```bash
 systemctl --user status linuwu-turbo-osd.service
 ```
-If the unit isn't found, you haven't installed it yet — follow the [Turbo OSD popup](#turbo-osd-popup-) steps above. If it's running but still silent, confirm the sysfs file it watches exists and updates: `cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/turbo_sense/turbo_state` should flip between `0`/`1` as you press the key.
+If the unit isn't found, either your hardware wasn't detected as turbo-capable at install time, or `python3-gi`/GTK 3 wasn't installed yet (see [Turbo OSD popup](#turbo-osd-popup-)) — re-run `sudo make install` after installing it. If it's enabled but not running, there was no active graphical session at install time; log back in or run `systemctl --user start linuwu-turbo-osd.service`. If it's running but still silent, confirm the sysfs file it watches exists and updates: `cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/turbo_sense/turbo_state` should flip between `0`/`1` as you press the key.
 
 ## 🚧 Roadmap
 

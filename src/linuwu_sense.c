@@ -335,6 +335,7 @@ enum acer_wmi_predator_v4_oc {
  static bool cycle_gaming_thermal_profile = true;
  static bool predator_v4;
  static bool nitro_v4;
+ static bool experimental_ph315_predator_v4;
  static u64 supported_sensors;
  
  module_param(mailled, int, 0444);
@@ -346,6 +347,7 @@ enum acer_wmi_predator_v4_oc {
  module_param(cycle_gaming_thermal_profile, bool, 0644);
  module_param(predator_v4, bool, 0444);
  module_param(nitro_v4, bool, 0444);
+ module_param(experimental_ph315_predator_v4, bool, 0444);
  MODULE_PARM_DESC(mailled, "Set initial state of Mail LED");
  MODULE_PARM_DESC(brightness, "Set initial LCD backlight brightness");
  MODULE_PARM_DESC(threeg, "Set initial state of 3G hardware");
@@ -358,6 +360,10 @@ enum acer_wmi_predator_v4_oc {
      "Enable features for predator laptops that use predator sense v4");
  MODULE_PARM_DESC(nitro_v4,
     "Enable features for nitro laptops that use nitro sense v4");
+ MODULE_PARM_DESC(experimental_ph315_predator_v4,
+    "EXPERIMENTAL, PH315-52/53 only: also probe the predator_sense v4 interface "
+    "(platform_profile, fan_speed, battery limiter, etc.) alongside the turbo hotkey. "
+    "Untested on this hardware generation - the relevant WMI methods may simply not exist.");
  
  struct acer_data {
      int mailled;
@@ -478,7 +484,22 @@ enum acer_wmi_predator_v4_oc {
      .cpu_fans = 1,
      .gpu_fans = 1,
  };
- 
+
+ /*
+  * EXPERIMENTAL: same as quirk_acer_predator_ph315_53, but also probes the
+  * newer predator_sense v4 (ACER_WMID_GET_GAMING_SYS_INFO-based) interface
+  * for platform_profile/fan_speed/battery limiter/etc. That interface has
+  * never been confirmed to exist on PH315-53/PH315-52 firmware; opt in with
+  * the experimental_ph315_predator_v4=1 module parameter to test it without
+  * losing turbo hotkey support if it turns out to be unsupported.
+  */
+ static struct quirk_entry quirk_acer_predator_ph315_53_experimental = {
+     .turbo = 1,
+     .cpu_fans = 1,
+     .gpu_fans = 1,
+     .predator_v4 = 1,
+ };
+
  static struct quirk_entry quirk_acer_predator_phn16_71 = {
      .predator_v4 = 1,
      .four_zone_kb = 1,
@@ -979,9 +1000,15 @@ enum acer_wmi_predator_v4_oc {
      } else if (force_series == 2490) {
          quirks = &quirk_acer_travelmate_2490;
      }
- 
+
      if (quirks == NULL)
          quirks = &quirk_unknown;
+
+     if (experimental_ph315_predator_v4 && quirks == &quirk_acer_predator_ph315_53) {
+         pr_warn("experimental_ph315_predator_v4 enabled: probing the predator_sense v4 "
+             "interface on hardware it has never been confirmed to support\n");
+         quirks = &quirk_acer_predator_ph315_53_experimental;
+     }
  }
  
  /*
