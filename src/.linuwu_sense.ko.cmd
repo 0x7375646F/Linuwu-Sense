@@ -1,0 +1,1 @@
+savedcmd_src/linuwu_sense.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T /usr/lib/modules/7.2.3-arch1-3/build/scripts/module.lds -o src/linuwu_sense.ko src/linuwu_sense.o src/linuwu_sense.mod.o .module-common.o
