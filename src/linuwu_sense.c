@@ -36,6 +36,7 @@
  #include <linux/unaligned.h>
  #include <linux/bitfield.h>
  #include <linux/bitmap.h>
+ #include <linux/string.h>
  
  MODULE_AUTHOR("Carlos Corbacho");
  MODULE_DESCRIPTION("Acer Laptop WMI Extras Driver");
@@ -615,6 +616,15 @@ enum acer_wmi_predator_v4_oc {
             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-58"),
         },
         .driver_data = &quirk_acer_nitro_an515_58,
+    },
+    {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro AN517-54",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN517-54"),
+        },
+        .driver_data = &quirk_acer_nitro_v4,
     },
      {
          .callback = dmi_matched,
@@ -3299,7 +3309,7 @@ enum acer_wmi_predator_v4_oc {
      char *token;
      char* input_ptr = input;
      size_t len = min(count, sizeof(input) - 1);
-     strncpy(input, buf, len);
+     memcpy(input, buf, len);
  
      if(input[len-1] == '\n'){
          input[len-1] = '\0';
@@ -3750,7 +3760,7 @@ enum acer_wmi_predator_v4_oc {
      char *input_ptr = input_buf;
      size_t len = min(count, sizeof(input_buf) - 1);
  
-     strncpy(input_buf, buf, len);
+     memcpy(input_buf, buf, len);
  
      if(input_buf[len-1] == '\n'){
          input_buf[len-1] = '\0';
@@ -3923,7 +3933,7 @@ enum acer_wmi_predator_v4_oc {
      struct per_zone_color colors;
      char *input_ptr = str_buf;
      len = min(count, sizeof(str_buf) - 1);
-     strncpy(str_buf, buf, len);
+     memcpy(str_buf, buf, len);
      if(str_buf[len-1] == '\n'){
          str_buf[len-1] = '\0';
      } else {
