@@ -4,28 +4,69 @@ The code base is still in its early stages, as I’ve just started working on de
 Inspired by [acer-predator-turbo](https://github.com/JafarAkhondali/acer-predator-turbo-and-rgb-keyboard-linux-module), which has a similar goal, this project was born out of my own challenges. I faced issues detecting the Turbo key and ended up using [acer_wmi](https://github.com/torvalds/linux/blob/master/drivers/platform/x86/acer-wmi.c), but it lacked key features like RGB , custom fan support, battery limiter, and more. As a result, I decided to implement these missing features in my own project.
 
 ## 🚀 Installation
-To begin, identify your current kernel version:
-```bash
-uname -r
-```
 
-Install the appropriate Linux headers based on your kernel version. This module has been tested with kernel version (6.12,6.13 ([previous code base](https://github.com/0x7375646F/Linuwu-Sense/tree/v6.13)),6.14) zen. 
-For Arch Linux:
-```bash
-sudo pacman -S linux-headers
-```
-Next, clone the repository and build the module:
-```bash
-git clone https://github.com/0x7375646F/Linuwu-Sense.git
-cd Linuwu-Sense
-make install
-```
-The make command will remove the current acer_wmi module and load the patched version.
+### Option 1: Automatic Rebuilds with DKMS (Recommended)
 
-To Uninstall:
-```bash
-make uninstall
-```
+Using DKMS ensures that the module is automatically rebuilt and installed whenever your kernel is updated.
+
+1. **Install Prerequisites**:
+   Install DKMS and the headers corresponding to your kernel (e.g. for Arch / Omarchy Linux):
+   ```bash
+   sudo pacman -S dkms linux-headers
+   # (use linux-zen-headers or linux-lts-headers if using those kernels)
+   ```
+
+2. **Copy Sources to `/usr/src`**:
+   ```bash
+   sudo mkdir -p /usr/src/linuwu-sense-1.0/src
+   sudo cp Makefile dkms.conf LICENSE README.md linuwu_sense.service /usr/src/linuwu-sense-1.0/
+   sudo cp src/linuwu_sense.c /usr/src/linuwu-sense-1.0/src/
+   ```
+
+3. **Register, Build, and Install via DKMS**:
+   ```bash
+   sudo dkms add -m linuwu-sense -v 1.0
+   sudo dkms build -m linuwu-sense -v 1.0
+   sudo dkms install -m linuwu-sense -v 1.0
+   ```
+
+4. **Verify Status**:
+   ```bash
+   dkms status
+   ```
+   You should see `linuwu-sense/1.0, <kernel-version>, x86_64: installed`.
+
+5. **Uninstall / Remove from DKMS**:
+   ```bash
+   sudo dkms remove -m linuwu-sense -v 1.0 --all
+   sudo rm -rf /usr/src/linuwu-sense-1.0
+   ```
+
+---
+
+### Option 2: Manual Installation
+
+To compile and install manually for the currently running kernel:
+
+1. Identify your current kernel version and install matching headers:
+   ```bash
+   uname -r
+   sudo pacman -S linux-headers
+   ```
+   *(Tested with kernel versions 6.12, 6.13, 6.14, and 7.x).*
+
+2. Build and install:
+   ```bash
+   git clone https://github.com/0x7375646F/Linuwu-Sense.git
+   cd Linuwu-Sense
+   make install
+   ```
+   The make command will blacklist and remove `acer_wmi`, install `linuwu_sense`, configure systemd services, and set up permissions.
+
+3. To Uninstall:
+   ```bash
+   make uninstall
+   ```
 > **⚠️ Warning!**
 > ## Use at your own risk! This driver is independently developed through reverse engineering the official PredatorSense app, without any involvement from Acer. It interacts with low-level WMI methods, which may not be tested across all models.
 

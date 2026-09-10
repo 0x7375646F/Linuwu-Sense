@@ -1,6 +1,6 @@
 obj-m := src/linuwu_sense.o
 
-KVER  ?= $(shell uname -r)
+KVER  ?= $(if $(KERNELRELEASE),$(KERNELRELEASE),$(shell uname -r))
 KDIR  := /lib/modules/$(KVER)/build
 PWD   := $(shell pwd)
 
