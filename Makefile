@@ -9,7 +9,7 @@ MODNAME := linuwu_sense
 REAL_USER := $(shell echo $${SUDO_USER:-$$(whoami)})
 
 all:
-	$(MAKE) -C $(KDIR) M=$(PWD) modules
+	$(MAKE) --no-print-directory -f "$(KDIR)/Makefile" M="$(PWD)" modules
 
 	# --- auto sign block ---
 	# Check if keys exist before attempting to sign
@@ -24,16 +24,16 @@ all:
 	fi; \
 	echo "Signing module linuwu_sense.ko using $$SIGN_TOOL"; \
 	sudo $$SIGN_TOOL sha256 \
-	$(HOME)/module-signing/MOK.priv \
-	$(HOME)/module-signing/MOK.der \
-	$(PWD)/src/linuwu_sense.ko; \
+	"$(HOME)/module-signing/MOK.priv" \
+	"$(HOME)/module-signing/MOK.der" \
+	"$(PWD)/src/linuwu_sense.ko"; \
 	else \
 	echo "MOK keys not found in ~/module-signing/. Skipping module signing (Common for non-Secure Boot)."; \
 	fi
 	# --- end auto sign block ---
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
+	$(MAKE) --no-print-directory -f "$(KDIR)/Makefile" M="$(PWD)" clean
 
 uninstall:
 	@sudo rm -f /etc/modules-load.d/$(MODNAME).conf
