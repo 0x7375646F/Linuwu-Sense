@@ -511,14 +511,6 @@ enum acer_wmi_predator_v4_oc {
      .mailled = 1,
  };
  
- static struct quirk_entry quirk_acer_predator_ph315_52 = {
-     .turbo = 1,
-     .cpu_fans = 1,
-     .gpu_fans = 1,
-     .predator_legacy = 1,  // Enable legacy Predator features without platform profiles
-     .four_zone_kb = 1,     // RGB keyboard partially working (interface available but limited functionality)
- };
-
  static struct quirk_entry quirk_acer_predator_ph315_53 = {
      .turbo = 1,
      .cpu_fans = 1,
@@ -987,15 +979,6 @@ static struct quirk_entry quirk_acer_nitro = {
      },
      {
          .callback = dmi_matched,
-         .ident = "Acer Predator PH315-52",
-         .matches = {
-             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH315-52"),
-         },
-         .driver_data = &quirk_acer_predator_ph315_52,
-     },
-     {
-         .callback = dmi_matched,
          .ident = "Acer Predator PH315-53",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
@@ -1086,15 +1069,6 @@ static struct quirk_entry quirk_acer_nitro = {
     },
      {
          .callback = dmi_matched,
-         .ident = "Acer Predator PHN16S-71",
-         .matches = {
-             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16S-71"),
-         },
-         .driver_data = &quirk_acer_predator_v4,
-     },
-     {
-         .callback = dmi_matched,
          .ident = "Acer Predator PH18-71",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
@@ -1128,15 +1102,6 @@ static struct quirk_entry quirk_acer_nitro = {
              DMI_MATCH(DMI_PRODUCT_NAME, "Predator PTX17-71"),
          },
          .driver_data = &quirk_acer_predator_v4,
-     },
-	 {
-         .callback = dmi_matched,
-         .ident = "Acer Predator PHN16S-71",
-         .matches = {
-             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16S-71"),
-         },
-         .driver_data = &quirk_acer_predator_phn16s_71,
      },
      {
          .callback = set_force_caps,
