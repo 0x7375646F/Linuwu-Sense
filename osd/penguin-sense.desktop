@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Penguin Sense
+Comment=CPU/GPU temperature and fan RPM monitor for Acer Predator/Nitro laptops
+Exec=python3 @PENGUIN_SENSE_SCRIPT@
+Icon=penguin-sense
+Terminal=false
+Categories=System;Monitor;
