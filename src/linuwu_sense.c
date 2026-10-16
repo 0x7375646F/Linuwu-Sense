@@ -533,7 +533,6 @@ enum acer_wmi_predator_v4_oc {
     .nitro_v4 = 1,
     .four_zone_kb = 1,
  };
-
  static struct quirk_entry quirk_acer_nitro_legacy = {
      .nitro_sense = 2,
  };
@@ -541,6 +540,14 @@ enum acer_wmi_predator_v4_oc {
  static struct quirk_entry quirk_acer_nitro_an515_57 = {
     .nitro_v4 = 1,
  };
+
+static struct quirk_entry quirk_acer_nitro_anv16_71 = {
+    .nitro_v4 = 1,
+    .cpu_fans = 1,
+    .gpu_fans = 1,
+    .brightness = 1,
+    .turbo = 1,
+};
 
  static struct quirk_entry quirk_acer_nitro_an515_58 = {
     .nitro_v4 = 1,
@@ -683,6 +690,15 @@ static struct quirk_entry quirk_acer_nitro = {
          },
          .driver_data = &quirk_acer_nitro_anv16_41,
      },
+     {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro ANV16-71",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV16-71"),
+        },
+        .driver_data = &quirk_acer_nitro_anv16_71,
+    },
      {
          .callback = dmi_matched,
          .ident = "Acer Nitro ANV15-41",
