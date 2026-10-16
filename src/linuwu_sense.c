@@ -14,9 +14,7 @@
  #include <linux/delay.h>
  #include <linux/device.h>
  #include <linux/kernel.h>
- #include <linux/string.h>
  #include <linux/module.h>
-#include <linux/string.h>
  #include <linux/init.h>
  #include <linux/types.h>
  #include <linux/dmi.h>
@@ -36,7 +34,7 @@
  #include <linux/hwmon.h>
  #include <linux/fs.h>
  #include <linux/units.h>
- #include <asm/unaligned.h>
+ #include <linux/unaligned.h>
  #include <linux/bitfield.h>
  #include <linux/bitmap.h>
  #include <linux/hid.h>
@@ -2316,7 +2314,7 @@ static struct quirk_entry quirk_acer_nitro = {
  
      acer_backlight_device = bd;
 
-     bd->props.power = FB_BLANK_UNBLANK;
+     bd->props.power = BACKLIGHT_POWER_ON;
      bd->props.brightness = read_brightness(bd);
      backlight_update_status(bd);
      return 0;
@@ -2721,7 +2719,7 @@ static struct quirk_entry quirk_acer_nitro = {
          if (tp != acer_predator_v4_max_perf)
              last_non_turbo_profile = tp;
  
-         platform_profile_notify();
+         platform_profile_notify(platform_profile_device);
      }
  
      return 0;
@@ -2953,39 +2951,30 @@ static struct quirk_entry quirk_acer_nitro = {
      }
  }
  
-static void acer_wmi_notify(u32 value, void *context)
-{
-    struct event_return_value return_value;
-    u16 device_state;
-    const struct key_entry *key;
-    u32 scancode;
-    struct acpi_buffer response = { ACPI_ALLOCATE_BUFFER, NULL };
-    union acpi_object *obj;
-    acpi_status status;
-
-    status = wmi_get_event_data(value, &response);
-    if (ACPI_FAILURE(status)) {
-        pr_warn("Bad event status 0x%x\n", status);
-        return;
-    }
-
-    obj = (union acpi_object *)response.pointer;
-    if (!obj)
-        return;
-    if (obj->type != ACPI_TYPE_BUFFER) {
-        pr_warn("Unknown response received %d\n", obj->type);
-        kfree(obj);
-        return;
-    }
-    if (obj->buffer.length != 8) {
-        pr_warn("Unknown buffer length %d\n", obj->buffer.length);
-        kfree(obj);
-        return;
-    }
-
-    return_value = *((struct event_return_value *)obj->buffer.pointer);     switch (return_value.function) {
+static void acer_wmi_notify(union acpi_object *obj, void *context)
+ {
+     struct event_return_value return_value;
+     u16 device_state;
+     const struct key_entry *key;
+     u32 scancode;
+ 
+     if (!obj)
+         return;
+     if (obj->type != ACPI_TYPE_BUFFER) {
+         pr_warn("Unknown response received %d\n", obj->type);
+         return;
+     }
+     if (obj->buffer.length != 8) {
+         pr_warn("Unknown buffer length %d\n", obj->buffer.length);
+         return;
+     }
+ 
+     return_value = *((struct event_return_value *)obj->buffer.pointer);
+ 
+     switch (return_value.function) {
      case WMID_HOTKEY_EVENT:
          device_state = return_value.device_state;
+         pr_info("device state: 0x%x\n", device_state);
  
          key = sparse_keymap_entry_from_scancode(acer_wmi_input_dev,
                              return_value.key_num);
@@ -3019,6 +3008,7 @@ static void acer_wmi_notify(u32 value, void *context)
          acer_kbd_dock_event(&return_value);
          break;
      case WMID_GAMING_TURBO_KEY_EVENT:
+        pr_info("pressed turbo button - %d\n", return_value.key_num);
          if (return_value.key_num == 0x4  && !has_cap(ACER_CAP_NITRO_SENSE_V4))
              acer_toggle_turbo();
          if ((return_value.key_num == 0x5 || (return_value.key_num == 0x4 && has_cap(ACER_CAP_NITRO_SENSE_V4))) && has_cap(ACER_CAP_PLATFORM_PROFILE))
@@ -3051,12 +3041,11 @@ static void acer_wmi_notify(u32 value, void *context)
          }
          break;
      default:
-        pr_warn("Unknown function number - %d - %d\n",
-            return_value.function, return_value.key_num);
-        break;
-    }
-    kfree(obj);
-}
+         pr_warn("Unknown function number - %d - %d\n",
+             return_value.function, return_value.key_num);
+         break;
+     }
+ }
 
 static acpi_status __init
  wmid3_set_function_mode(struct func_input_params *params,
