@@ -708,7 +708,7 @@ static struct quirk_entry quirk_acer_nitro = {
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN16-41"),
          },
          .driver_data = &quirk_acer_nitro_an16_41,
-     },     
+     },
      {
          .callback = dmi_matched,
          .ident = "Acer Nitro ANV16-41",
@@ -718,7 +718,7 @@ static struct quirk_entry quirk_acer_nitro = {
          },
          .driver_data = &quirk_acer_nitro_anv16_41,
      },
-          {
+     {
          .callback = dmi_matched,
          .ident = "Acer Nitro ANV16S-41",
          .matches = {
