@@ -625,6 +625,11 @@ static struct quirk_entry quirk_acer_nitro_an515_45 = {
     .four_zone_kb = 1,
 };
 
+static struct quirk_entry quirk_acer_nitro_an517_41 = {
+    .nitro_v4 = 1,
+    .four_zone_kb = 1,
+};
+
 
 static struct quirk_entry quirk_acer_nitro_an515_54 = {
     .brightness = -1, /* Has 3 levels in official, enabling timeout disbales lights entirely until reboot. Disabled for now */
@@ -755,6 +760,15 @@ static struct quirk_entry quirk_acer_nitro = {
             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-58"),
         },
         .driver_data = &quirk_acer_nitro_an515_58,
+    },
+    {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro AN517-41",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN517-41"),
+        },
+        .driver_data = &quirk_acer_nitro_an517_41,
     },
      {
          .callback = dmi_matched,
