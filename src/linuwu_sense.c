@@ -33,7 +33,7 @@
  #include <linux/hwmon.h>
  #include <linux/fs.h>
  #include <linux/units.h>
- #include <linux/unaligned.h>
+ #include <asm/unaligned.h>
  #include <linux/bitfield.h>
  #include <linux/bitmap.h>
  
@@ -2167,8 +2167,8 @@ static struct quirk_entry quirk_acer_nitro = {
      }
  
      acer_backlight_device = bd;
- 
-     bd->props.power = BACKLIGHT_POWER_ON;
+
+     bd->props.power = FB_BLANK_UNBLANK;
      bd->props.brightness = read_brightness(bd);
      backlight_update_status(bd);
      return 0;
@@ -2560,7 +2560,7 @@ static struct quirk_entry quirk_acer_nitro = {
          if (tp != acer_predator_v4_max_perf)
              last_non_turbo_profile = tp;
  
-         platform_profile_notify(platform_profile_device);
+         platform_profile_notify();
      }
  
      return 0;
@@ -2792,27 +2792,37 @@ static struct quirk_entry quirk_acer_nitro = {
      }
  }
  
- static void acer_wmi_notify(union acpi_object *obj, void *context)
- {
-     struct event_return_value return_value;
-     u16 device_state;
-     const struct key_entry *key;
-     u32 scancode;
- 
-     if (!obj)
-         return;
-     if (obj->type != ACPI_TYPE_BUFFER) {
-         pr_warn("Unknown response received %d\n", obj->type);
-         return;
-     }
-     if (obj->buffer.length != 8) {
-         pr_warn("Unknown buffer length %d\n", obj->buffer.length);
-         return;
-     }
- 
-     return_value = *((struct event_return_value *)obj->buffer.pointer);
- 
-     switch (return_value.function) {
+static void acer_wmi_notify(u32 value, void *context)
+{
+    struct event_return_value return_value;
+    u16 device_state;
+    const struct key_entry *key;
+    u32 scancode;
+    struct acpi_buffer response = { ACPI_ALLOCATE_BUFFER, NULL };
+    union acpi_object *obj;
+    acpi_status status;
+
+    status = wmi_get_event_data(value, &response);
+    if (ACPI_FAILURE(status)) {
+        pr_warn("Bad event status 0x%x\n", status);
+        return;
+    }
+
+    obj = (union acpi_object *)response.pointer;
+    if (!obj)
+        return;
+    if (obj->type != ACPI_TYPE_BUFFER) {
+        pr_warn("Unknown response received %d\n", obj->type);
+        kfree(obj);
+        return;
+    }
+    if (obj->buffer.length != 8) {
+        pr_warn("Unknown buffer length %d\n", obj->buffer.length);
+        kfree(obj);
+        return;
+    }
+
+    return_value = *((struct event_return_value *)obj->buffer.pointer);     switch (return_value.function) {
      case WMID_HOTKEY_EVENT:
          device_state = return_value.device_state;
  
@@ -2880,13 +2890,14 @@ static struct quirk_entry quirk_acer_nitro = {
          }
          break;
      default:
-         pr_warn("Unknown function number - %d - %d\n",
-             return_value.function, return_value.key_num);
-         break;
-     }
- }
- 
- static acpi_status __init
+        pr_warn("Unknown function number - %d - %d\n",
+            return_value.function, return_value.key_num);
+        break;
+    }
+    kfree(obj);
+}
+
+static acpi_status __init
  wmid3_set_function_mode(struct func_input_params *params,
              struct func_return_value *return_value)
  {
@@ -4439,17 +4450,23 @@ static struct quirk_entry quirk_acer_nitro = {
          set_u32(LED_OFF, ACER_CAP_MAILLED);
  }
  
- static struct platform_driver acer_platform_driver = {
-     .driver = {
-         .name = "acer-wmi",
-         .pm = &acer_pm,
-     },
-     .probe = acer_platform_probe,
-     .remove = acer_platform_remove,
-     .shutdown = acer_platform_shutdown,
- };
- 
- static struct platform_device *acer_platform_device;
+static int acer_platform_remove_compat(struct platform_device *device)
+{
+    acer_platform_remove(device);
+    return 0;
+}
+
+static struct platform_driver acer_platform_driver = {
+    .driver = {
+        .name = "acer-wmi",
+        .pm = &acer_pm,
+    },
+    .probe = acer_platform_probe,
+    .remove = acer_platform_remove_compat,
+    .shutdown = acer_platform_shutdown,
+};
+
+static struct platform_device *acer_platform_device;
  
  static void remove_debugfs(void)
  {
