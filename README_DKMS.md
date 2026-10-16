@@ -1,272 +1,151 @@
-# Linuwu-Sense DKMS Installation Guide
+# Linuwu Sense DKMS Installation Guide
 
-This guide explains how to install Linuwu-Sense using DKMS (Dynamic Kernel Module Support) for automatic kernel module rebuilding on kernel updates.
-
-## What is DKMS?
-
-DKMS (Dynamic Kernel Module Support) is a framework that allows kernel modules to be automatically rebuilt when a new kernel is installed. This ensures that your Linuwu-Sense module will continue to work after kernel updates without manual intervention.
+This guide explains how to install or uninstall the Linuwu Sense DKMS module. The DKMS module makes sure the driver is updated when newer kernels are installed.
 
 ## Prerequisites
 
-Before installing Linuwu-Sense with DKMS, ensure you have the following dependencies:
+Before installing, ensure you have:
+- `dkms` package installed
+- kernel headers 
 
-### For Debian/Ubuntu:
+  on Ubuntu/Debian:
+  ```bash
+  sudo apt-get install linux-headers-generic
+  # or
+  sudo apt-get install linux-headers-$(uname -r)
+  ```
+- `systemd` (for service management)
+- Root privileges
+
+## Installation Methods
+
+### Method 1: Using the Installer Script (Recommended)
+
+The easiest way to install is by using the provided installer script:
+
 ```bash
-sudo apt update
-sudo apt install dkms build-essential linux-headers-$(uname -r)
+# Make sure the script is executable
+chmod u+x setup.sh
+
+# Run the installer
+./setup.sh # Select option 1 or 3
 ```
 
-### For Fedora/RHEL/CentOS:
-```bash
-sudo dnf install dkms gcc make kernel-devel
-```
+The script will guide you through the installation process and provide options for:
+- Installing the DKMS drivers (it will remove legacy driver first if installed)
+- Uninstalling existing drivers
+- Reinstalling/updating drivers (_use this for driver updates, it will remove the current driver first_)
+- Checking service status
 
-### For Arch Linux:
-```bash
-sudo pacman -S dkms linux-headers
-```
+### Method 2: Manual Installation
 
-## Installation
-
-### Quick Installation
-
-1. **Clone or download the Linuwu-Sense repository:**
-   ```bash
-   git clone <repository-url>
-   cd Linuwu-Sense
-   ```
-
-2. **Make the installation script executable:**
-   ```bash
-   chmod +x install.sh
-   ```
-
-3. **Run the installation script:**
-   ```bash
-   sudo ./install.sh
-   ```
-
-The installation script will:
-- Check for required dependencies
-- Remove any existing installations
-- Install the module through DKMS
-- Configure automatic module loading
-- Set up systemd service
-- Configure user permissions
-- Load the module
-
-### Manual Installation
-
-If you prefer to install manually:
+If you prefer to install manually, follow these steps while in the directtory that contains `dkms.conf`:
 
 1. **Add the module to DKMS:**
    ```bash
-   sudo dkms add $(pwd)
+   sudo dkms add "$(pwd)" 
    ```
-
-2. **Build and install the module:**
+   In the output, note the version in the end, for instance if the output is:
    ```bash
-   sudo dkms build linuwu-sense/1.0.0
-   sudo dkms install linuwu-sense/1.0.0
+   Creating symlink /var/lib/dkms/linuwu-sense/0.1.0/source -> /usr/src/linuwu-sense-0.1.0
    ```
+   then version is `0.1.0`.
 
-3. **Configure module loading:**
+2. **Install the module:**
    ```bash
-   echo "linuwu_sense" | sudo tee /etc/modules-load.d/linuwu_sense.conf
-   echo "blacklist acer_wmi" | sudo tee /etc/modprobe.d/blacklist-acer_wmi.conf
+   sudo dkms install -m linuwu-sense -v 0.1.0
    ```
 
-4. **Load the module:**
-   ```bash
-   sudo modprobe linuwu_sense
-   ```
+3. **Unload the stock driver and load the new one:**
 
-## Verification
-
-After installation, verify that everything is working correctly:
-
-### Check DKMS Status
-```bash
-dkms status
-```
-You should see output like:
-```
-linuwu-sense, 1.0.0, 5.15.0-52-generic, x86_64: installed
-```
-
-### Check Module Status
-```bash
-lsmod | grep linuwu_sense
-```
-
-### Check Service Status
-```bash
-systemctl status linuwu_sense.service
-```
-
-### Check Available Controls
-```bash
-ls /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/
-```
-
-## Uninstallation
-
-### Quick Uninstallation
-
-To remove the DKMS installation:
-
-```bash
-sudo ./uninstall.sh
-```
-
-### Manual Uninstallation
-
-1. **Remove DKMS installation:**
-   ```bash
-   sudo dkms remove linuwu-sense/1.0.0 --all
-   ```
-
-2. **Remove configuration files:**
-   ```bash
-   sudo rm -f /etc/modules-load.d/linuwu_sense.conf
-   sudo rm -f /etc/modprobe.d/blacklist-acer_wmi.conf
-   sudo rm -f /etc/systemd/system/linuwu_sense.service
-   sudo rm -f /etc/tmpfiles.d/linuwu_sense.conf
-   ```
-
-3. **Reload systemd:**
-   ```bash
-   sudo systemctl daemon-reload
-   ```
-
-## DKMS Management Commands
-
-### View DKMS Status
-```bash
-dkms status
-```
-
-### List All DKMS Modules
-```bash
-dkms list
-```
-
-### Rebuild Module for Current Kernel
-```bash
-sudo dkms autoinstall
-```
-
-### Remove Specific Version
-```bash
-sudo dkms remove linuwu-sense/1.0.0
-```
-
-### Remove All Versions
-```bash
-sudo dkms remove linuwu-sense/1.0.0 --all
-```
-
-## Troubleshooting
-
-### Module Not Loading After Kernel Update
-
-If the module doesn't load after a kernel update:
-
-1. **Check if DKMS built the module for the new kernel:**
-   ```bash
-   dkms status
-   ```
-
-2. **Manually rebuild if needed:**
-   ```bash
-   sudo dkms autoinstall
-   ```
-
-3. **Check for build errors:**
-   ```bash
-   sudo dkms build linuwu-sense/1.0.0
-   ```
-
-### Build Errors
-
-If you encounter build errors:
-
-1. **Check kernel headers:**
-   ```bash
-   ls /lib/modules/$(uname -r)/build
-   ```
-
-2. **Install missing headers:**
-   ```bash
-   # For Debian/Ubuntu
-   sudo apt install linux-headers-$(uname -r)
-   
-   # For Fedora/RHEL
-   sudo dnf install kernel-devel
-   
-   # For Arch Linux
-   sudo pacman -S linux-headers
-   ```
-
-3. **Check build logs:**
-   ```bash
-   cat /var/lib/dkms/linuwu-sense/1.0.0/build/make.log
-   ```
-
-### Module Conflicts
-
-If you experience conflicts with the original acer_wmi module:
-
-1. **Ensure acer_wmi is blacklisted:**
-   ```bash
-   cat /etc/modprobe.d/blacklist-acer_wmi.conf
-   ```
-
-2. **Unload conflicting modules:**
+   _It is safe to do it first, if the computer freezes or crash, rebooting will not load the driver automatically yet._
    ```bash
    sudo modprobe -r acer_wmi
    sudo modprobe linuwu_sense
    ```
 
-## Automatic Kernel Updates
+4. **Configure automatic load the module on boot:**
+   ```bash
+   # Blacklist the stock driver
+   echo "blacklist acer_wmi" | sudo tee /etc/modprobe.d/blacklist-acer_wmi.conf
+   
+   # Load the new driver
+   echo "linuwu_sense" | sudo tee /etc/modules-load.d/linuwu_sense.conf
+   ```
 
-With DKMS installed, the module will automatically rebuild when:
+5. **Install the service:**
+   ```bash
+   # Copy the service file
+   sudo cp linuwu_sense.service /etc/systemd/system/
 
-- A new kernel is installed via package manager
-- The system is updated and a new kernel is available
-- You manually trigger a rebuild with `dkms autoinstall`
+   # Apply changes to systemd
+   sudo systemctl daemon-reload
 
-### Systemd Integration
+   # Enable and start the service
+   sudo systemctl enable linuwu_sense.service
+   sudo systemctl start linuwu_sense.service
+   ```
 
-The installation includes a systemd service that ensures the module is properly unloaded during shutdown. This prevents potential issues during system updates.
+### Verification
 
-## File Locations
+After installation, verify that the driver is loaded:
 
-After installation, the following files are created:
+```bash
+# Check if the module is loaded
+lsmod | grep linuwu_sense
 
-- **DKMS Source:** `/usr/src/linuwu-sense-1.0.0/`
-- **Module:** `/lib/modules/$(uname -r)/kernel/drivers/platform/x86/linuwu_sense.ko`
-- **Configuration:**
-  - `/etc/modules-load.d/linuwu_sense.conf`
-  - `/etc/modprobe.d/blacklist-acer_wmi.conf`
-  - `/etc/systemd/system/linuwu_sense.service`
-  - `/etc/tmpfiles.d/linuwu_sense.conf`
+# Check service status
+systemctl status linuwu_sense.service
+```
 
-## Support
+## Uninstallation
 
-If you encounter issues with the DKMS installation:
+To uninstall the drivers:
 
-1. Check the troubleshooting section above
-2. Review the build logs in `/var/lib/dkms/linuwu-sense/1.0.0/build/`
-3. Check system logs: `journalctl -u linuwu_sense.service`
-4. Verify your system meets the prerequisites
+1. **Using the script:**
+   ```bash
+   ./setup.sh # Select option 2 (Uninstall)
+   ```
 
-## Benefits of DKMS Installation
+2. **Manual uninstallation:**
+   ```bash
+   # Remove the module from DKMS
+   sudo dkms remove -m linuwu-sense -v 0.1.0 --all
+   
+   # Stop and disable the service
+   sudo systemctl stop linuwu_sense.service
+   sudo systemctl disable linuwu_sense.service
 
-- **Automatic Updates:** Module rebuilds automatically on kernel updates
-- **Consistent Installation:** Standardized installation process
-- **Easy Management:** Simple commands to manage the module
-- **Clean Uninstallation:** Complete removal of all components
-- **System Integration:** Proper integration with systemd and module loading
+   # Remove installed files
+   sudo rm -f /etc/modprobe.d/blacklist-acer_wmi.conf
+   sudo rm -f /etc/modules-load.d/linuwu_sense.conf
+   sudo rm -f /etc/systemd/system/linuwu_sense.service
+   sudo rm -rf /usr/src/linuwu_sense-0.1.0
 
-This DKMS installation method ensures that your Linuwu-Sense module will continue to work seamlessly across kernel updates, providing a hassle-free experience for managing your Acer laptop's advanced features.
+   # Apply changes to systemd
+   sudo systemctl daemon-reload
+   
+   # Unload then load the stock driver
+   sudo modprobe -r linuwu_sense
+   sudo modprobe acer_wmi
+   ```
+
+## Troubleshooting
+
+If you encounter issues:
+1. Check that `dkms` is installed: `sudo apt install dkms` (Ubuntu/Debian)
+2. Ensure you're running `setup.sh` with root privileges
+3. Review the installer script output for specific error messages
+4. Check DKMS modules status with `dkms status`
+5. Check the service logs: `journalctl -u linuwu_sense.service`
+
+## Note about extra kernels installed
+
+If there are other kernels installed, you may need to install the driver for those kernels manually:
+```bash
+sudo dkms install linuwu-sense/0.1.0 -k <kernel_version>
+```
+Or wait for a new system update to the kernels, it should trigger the installation of all DKMS modules automatically.
+
+***
+For more information about DKMS, refer to [dkms(8)](https://linux.die.net/man/8/dkms).
