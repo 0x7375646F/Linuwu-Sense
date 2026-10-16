@@ -38,6 +38,7 @@
  #include <linux/bitfield.h>
  #include <linux/bitmap.h>
  #include <linux/hid.h>
+ #include <linux/power_supply.h>
  #include <linux/string.h>
  
  MODULE_AUTHOR("Carlos Corbacho");
@@ -88,6 +89,9 @@
  #define ACER_WMID_SET_GAMING_KB_BACKLIGHT_METHODID 20
  #define ACER_WMID_SET_GAMING_RGB_KB_METHODID 6
  #define ACER_WMID_GET_GAMING_RGB_KB_METHODID 7
+ 
+ #define ACER_GAMING_KBL_SET_ON BIT(3)
+ #define ACER_GAMING_KBL_SET_ALL_ZONES GENMASK_ULL(43, 40)
  
  #define ACER_PREDATOR_V4_FAN_SPEED_READ_BIT_MASK GENMASK(20, 8)
  #define ACER_GAMING_MISC_SETTING_STATUS_MASK GENMASK_ULL(7, 0)
@@ -439,6 +443,7 @@ enum acer_wmi_predator_v4_oc {
      u8 predator_legacy;  // For older Predator models like PH315-52
      u8 phn14_sensors; /* PHN14-51 specific sensors */
      u8 nitro_hid_kb;
+     u8 an515_58_rgb_fix;
  };
  
  static struct quirk_entry *quirks;
@@ -620,6 +625,18 @@ static struct quirk_entry quirk_acer_nitro_anv16_71 = {
  static struct quirk_entry quirk_acer_nitro_an515_58 = {
     .nitro_v4 = 1,
     .four_zone_kb = 1,
+    .an515_58_rgb_fix = 1,
+ };
+
+ /*
+  * AN515-55 uses the legacy nitro_sense interface. Its per-zone RGB needs the
+  * same byte-layout workaround as the AN515-58 (see set_per_zone_color); port
+  * of @fabiannabil1's fix via the AN515-55 fork.
+  */
+ static struct quirk_entry quirk_acer_nitro_an515_55 = {
+    .nitro_sense = 1,
+    .four_zone_kb = 1,
+    .an515_58_rgb_fix = 1,
  };
 
 static struct quirk_entry quirk_acer_nitro_an517_41 = {
@@ -753,6 +770,15 @@ static struct quirk_entry quirk_acer_nitro = {
             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-58"),
         },
         .driver_data = &quirk_acer_nitro_an515_58,
+    },
+    {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro AN515-55",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-55"),
+        },
+        .driver_data = &quirk_acer_nitro_an515_55,
     },
     {
         .callback = dmi_matched,
@@ -2020,7 +2046,33 @@ static struct quirk_entry quirk_acer_nitro = {
  
      return ret;
  }
-
+ 
+ /*
+  * Prefer the generic power-supply class over the WMI BAT_STATUS method: the
+  * latter lies on some models (notably Nitro), making the driver reject
+  * `quiet' / `balanced-performance' with -EOPNOTSUPP while actually on AC.
+  * Falls back to BAT_STATUS only when the power-supply class is unavailable.
+  */
+ static int acer_is_on_ac_power(void)
+ {
+     int supplied = power_supply_is_system_supplied();
+     u64 on_ac;
+     acpi_status status;
+ 
+     if (supplied > 0)
+         return 1;
+     if (supplied == 0)
+         return 0;
+ 
+     status = WMI_gaming_execute_u64(ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
+                                     ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS,
+                                     &on_ac);
+     if (ACPI_FAILURE(status))
+         return -EIO;
+ 
+     return on_ac ? 1 : 0;
+ }
+ 
  static acpi_status WMID_gaming_set_u64(u64 value, u32 cap)
  {
      u32 method_id = 0;
@@ -2490,16 +2542,12 @@ static struct quirk_entry quirk_acer_nitro = {
                        enum platform_profile_option profile)
  {
      int err,tp;
-     acpi_status status;
-     u64 on_AC;
+     int on_AC;
  
      /* Check Power Source */
-     status = WMI_gaming_execute_u64(
-         ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
-         ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
- 
-     if (ACPI_FAILURE(status))
-         return -EIO;
+     on_AC = acer_is_on_ac_power();
+     if (on_AC < 0)
+         return on_AC;
  
      /* Blocking these modes since in official version this is not supported when its not plugged in AC! */
      if(!on_AC && (profile == PLATFORM_PROFILE_PERFORMANCE || profile == PLATFORM_PROFILE_BALANCED_PERFORMANCE || profile == PLATFORM_PROFILE_QUIET)){
@@ -2648,18 +2696,14 @@ static struct quirk_entry quirk_acer_nitro = {
      if (quirks->predator_v4 || quirks->nitro_sense || quirks->nitro_v4) {
          u8 current_tp;
          int tp, err;
-         u64 on_AC;
-         acpi_status status;
+         int on_AC;
          err = WMID_gaming_get_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, &current_tp);
          if (err)
              return err;
          /* Check power source */
-         status = WMI_gaming_execute_u64(
-             ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
-             ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
-         
-         if (ACPI_FAILURE(status))
-             return -EIO;
+         on_AC = acer_is_on_ac_power();
+         if (on_AC < 0)
+             return on_AC;
          
          /* On AC - define next profile transitions */
          if (!on_AC) {
@@ -3720,7 +3764,7 @@ static acpi_status __init
  
  static int acer_predator_state_load(void)
  {
-     u64 on_AC;
+     int on_AC;
      struct file *file;
      ssize_t len;
      acpi_status status;
@@ -3741,11 +3785,8 @@ static acpi_status __init
      }
  
      /* Always proceed to restore state based on power source */
-     status = WMI_gaming_execute_u64(
-         ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
-         ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
- 
-     if (ACPI_FAILURE(status)) {
+     on_AC = acer_is_on_ac_power();
+     if (on_AC < 0) {
          pr_err("Failed to query power source state\n");
          return -1;
      }
@@ -3763,15 +3804,13 @@ static acpi_status __init
  
  
  static int acer_predator_state_save(void){
-     u64 on_AC;
+     int on_AC;
      acpi_status status;
      struct file *file;
      ssize_t len;
  
-     status = WMI_gaming_execute_u64(
-         ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
-         ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
-     if (ACPI_FAILURE(status))
+     on_AC = acer_is_on_ac_power();
+     if (on_AC < 0)
          return -1;
  
      /* update to the latest state based on power source */
@@ -4141,6 +4180,16 @@ static acpi_status __init
      struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
      struct acpi_buffer input = { (acpi_size)sizeof(gmInput), (void *)(gmInput) };
 
+     /*
+      * AN515-58/55: the backlight engine keeps the four zones disabled unless
+      * these bytes are laid out this way, so RAW per-zone colours silently do
+      * nothing. See set_per_zone_color() for the full fix.
+      */
+     if (quirks->an515_58_rgb_fix) {
+         gmInput[8] = 0;
+         gmInput[3] = (mode == 0x3) ? 8 : 0;
+     }
+
      status = wmi_evaluate_method(WMID_GUID4, 0, ACER_WMID_SET_GAMING_KB_BACKLIGHT_METHODID, &input, &output);
      if (ACPI_FAILURE(status))
          return status;
@@ -4167,6 +4216,24 @@ static acpi_status __init
      kfree(obj);
      return status;
  }
+ 
+ /*
+  * AN515-58/55: re-apply a plain static (single-colour) mode after the
+  * per-zone colours were pushed. WMI method 20 (SET_GAMING_KB_BACKLIGHT).
+  */
+ static acpi_status set_kb_static_mode(int brightness)
+ {
+     u8 gmInput[16] = {0};
+     struct acpi_buffer input = { (acpi_size)sizeof(gmInput), (void *)gmInput };
+ 
+     gmInput[2] = brightness;
+     gmInput[9] = 1;
+ 
+     return wmi_evaluate_method(WMID_GUID4, 0,
+                                ACER_WMID_SET_GAMING_KB_BACKLIGHT_METHODID,
+                                &input, NULL);
+ }
+ 
  static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
      u64 in = 1;
      acpi_status status;
@@ -4203,6 +4270,14 @@ static acpi_status __init
  struct per_zone_color {
      u64 zone1, zone2, zone3, zone4;
      int brightness;
+ } __packed;
+ 
+ /* AN515-58/55 per-zone payload: zone bit + one 8-bit colour component each */
+ struct an515_58_static_rgb_param {
+     u8 zone;
+     u8 red;
+     u8 green;
+     u8 blue;
  } __packed;
  
  struct kb_state {
@@ -4296,8 +4371,9 @@ static acpi_status __init
              speed = 0;
              direction = 0;
              break;
-         case 0x1:  // Breathing mode: Ignore speed
-             speed = 0;
+         case 0x1:  // Breathing mode: keep speed when the AN515-58 fix is active
+             if (!quirks->an515_58_rgb_fix)
+                 speed = 0;
              direction = 0;
              break;
          case 0x2:  // Neon mode: Ignore red, green, blue, and direction
@@ -4401,6 +4477,63 @@ static acpi_status __init
      }
 
      acpi_status status;
+ 
+     /*
+      * AN515-58/55: WMI drops RAW per-zone colours unless the zones are
+      * switched on first and a static mode is applied afterwards. Ported from
+      * @fabiannabil1's fix (via the AN515-55 fork).
+      */
+     if (quirks->an515_58_rgb_fix) {
+         status = WMI_gaming_execute_u64(ACER_WMID_GET_GAMING_SYS_INFO_METHODID, 0, NULL);
+         if (ACPI_FAILURE(status)) {
+             pr_err("Error polling gaming system info before RGB update: %s\n",
+                    acpi_format_exception(status));
+             return status;
+         }
+
+         status = WMI_gaming_execute_u64(ACER_WMID_SET_GAMING_LED_METHODID,
+                                         ACER_GAMING_KBL_SET_ON | ACER_GAMING_KBL_SET_ALL_ZONES,
+                                         NULL);
+         if (ACPI_FAILURE(status)) {
+             pr_err("Error enabling AN515-58 keyboard RGB zones: %s\n",
+                    acpi_format_exception(status));
+             return status;
+         }
+
+         for (int i = 0; i < 4; i++) {
+             struct an515_58_static_rgb_param params;
+             struct acpi_buffer acpi_input;
+             u64 color = *zones[i];
+
+             params.zone = zone_ids[i];
+             params.red = (((color >> 16) & 0xff) * input->brightness) / 100;
+             params.green = (((color >> 8) & 0xff) * input->brightness) / 100;
+             params.blue = ((color & 0xff) * input->brightness) / 100;
+
+             acpi_input.length = sizeof(params);
+             acpi_input.pointer = &params;
+
+             status = wmi_evaluate_method(WMID_GUID4, 0,
+                                          ACER_WMID_SET_GAMING_RGB_KB_METHODID,
+                                          &acpi_input, NULL);
+             if (ACPI_FAILURE(status)) {
+                 pr_err("Error setting AN515-58 RGB color (zone %d): %s\n",
+                        i + 1, acpi_format_exception(status));
+                 return status;
+             }
+         }
+
+         status = set_kb_static_mode(input->brightness);
+         if (ACPI_FAILURE(status)) {
+             pr_err("Error enabling AN515-58 static RGB mode: %s\n",
+                    acpi_format_exception(status));
+             return status;
+         }
+
+         current_kb_state.per_zone = 1;
+         return AE_OK;
+     }
+
      status = set_kb_status(0, 0, input->brightness, 0, 0, 0, 0);
      if (ACPI_FAILURE(status)) {
          pr_err("Error setting KB status.\n");
