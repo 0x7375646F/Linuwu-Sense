@@ -1,12 +1,4 @@
-# For DKMS compatibility, we need to build from the root directory
-# but the source is in src/. Create a symbolic link if needed.
-obj-m := linuwu_sense.o
-
-# Create symbolic link for DKMS if source doesn't exist in root
-$(obj-m:.o=.c): src/$(obj-m:.o=.c)
-	@if [ ! -f $(obj-m:.o=.c) ]; then \
-		ln -sf src/$(obj-m:.o=.c) $(obj-m:.o=.c); \
-	fi
+obj-m := src/linuwu_sense.o
 
 KVER  ?= $(if $(KERNELRELEASE),$(KERNELRELEASE),$(shell uname -r))
 KDIR  := /lib/modules/$(KVER)/build
@@ -45,7 +37,6 @@ all:
 
 clean:
 	$(MAKE) --no-print-directory -f "$(KDIR)/Makefile" M="$(PWD)" clean
-	@rm -f linuwu_sense.c
 
 uninstall:
 	@echo "Removing Turbo OSD popup service for $(REAL_USER)..."
