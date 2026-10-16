@@ -12,6 +12,7 @@
  #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
  
  #include <linux/delay.h>
+ #include <linux/device.h>
  #include <linux/kernel.h>
  #include <linux/module.h>
  #include <linux/init.h>
@@ -3649,7 +3650,7 @@ static acpi_status __init
      char *token;
      char* input_ptr = input;
      size_t len = min(count, sizeof(input) - 1);
-     strncpy(input, buf, len);
+     strscpy(input, buf, sizeof(input));
  
      if(input[len-1] == '\n'){
          input[len-1] = '\0';
@@ -4278,7 +4279,7 @@ static acpi_status __init
      char *input_ptr = input_buf;
      size_t len = min(count, sizeof(input_buf) - 1);
  
-     strncpy(input_buf, buf, len);
+     strscpy(input_buf, buf, sizeof(input_buf));
  
      if(input_buf[len-1] == '\n'){
          input_buf[len-1] = '\0';
@@ -4485,7 +4486,7 @@ static acpi_status __init
      struct per_zone_color colors;
      char *input_ptr = str_buf;
      len = min(count, sizeof(str_buf) - 1);
-     strncpy(str_buf, buf, len);
+     strscpy(str_buf, buf, sizeof(str_buf));
      if(str_buf[len-1] == '\n'){
          str_buf[len-1] = '\0';
      } else {
