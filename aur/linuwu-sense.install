@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# The sysfs controls shipped by linuwu_sense are group-owned by "linuwu_sense"
+# (see /usr/lib/tmpfiles.d/linuwu_sense.conf), so the user has to be a member
+# to use them without root. A package cannot reliably add the invoker, so we
+# print the command instead.
+_sense_group_hint() {
+    cat <<'EOF'
+
+The linuwu_sense driver is registered with DKMS and will rebuild automatically
+on kernel upgrades.
+
+To control fan speed, RGB and battery settings without root, add your user to
+the "linuwu_sense" group:
+
+    sudo usermod -aG linuwu_sense "$USER"
+
+Log out and back in (or run "newgrp linuwu_sense") for it to take effect.
+EOF
+}
+
+_sense_configure() {
+    systemd-sysusers >/dev/null 2>&1 || true
+    systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuwu_sense.conf >/dev/null 2>&1 || true
+
+    systemctl enable linuwu_sense.service >/dev/null 2>&1 || true
+    systemctl enable linuwu-sense-setup.service >/dev/null 2>&1 || true
+}
+
+post_install() {
+    _sense_configure
+    _sense_group_hint
+}
+
+post_upgrade() {
+    _sense_configure
+}
+
+pre_remove() {
+    systemctl disable linuwu_sense.service >/dev/null 2>&1 || true
+    systemctl disable linuwu-sense-setup.service >/dev/null 2>&1 || true
+    rmmod linuwu_sense 2>/dev/null || true
+    # Our modprobe blacklist is going away, so bring the in-kernel driver back.
+    modprobe acer_wmi 2>/dev/null || true
+}

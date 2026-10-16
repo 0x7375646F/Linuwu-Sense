@@ -1,0 +1,23 @@
+pkgbase = linuwu-sense-an515-55-dkms
+	pkgdesc = Acer Nitro/Predator WMI driver (DKMS) with fan-speed fix and modern-kernel support
+	pkgver = 25.701
+	pkgrel = 1
+	url = https://github.com/minervarr/linuwuSexo
+	install = linuwu-sense.install
+	arch = any
+	license = GPL
+	makedepends = git
+	depends = dkms
+	optdepends = linux-headers: build for the standard kernel
+	optdepends = linux-lts-headers: build for the LTS kernel
+	optdepends = linux-zen-headers: build for the zen kernel
+	optdepends = linux-cachyos-headers: build for the CachyOS kernel
+	optdepends = gcc: build with gcc
+	optdepends = clang: build with clang/LLVM (needed if the kernel was built with clang)
+	conflicts = linuwu-sense-dkms
+	source = git+https://github.com/minervarr/linuwuSexo.git#tag=v25.701
+	source = linuwu-sense-setup.service
+	sha256sums = SKIP
+	sha256sums = 2846ae5165408f3681092740c6d00f014343f0d757b2bdc605f1e066eed7ee62
+
+pkgname = linuwu-sense-an515-55-dkms
