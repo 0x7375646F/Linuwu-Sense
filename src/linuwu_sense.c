@@ -12,6 +12,7 @@
  #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
  
  #include <linux/delay.h>
+ #include <linux/device.h>
  #include <linux/kernel.h>
  #include <linux/module.h>
  #include <linux/init.h>
@@ -36,6 +37,9 @@
  #include <linux/unaligned.h>
  #include <linux/bitfield.h>
  #include <linux/bitmap.h>
+ #include <linux/hid.h>
+ #include <linux/power_supply.h>
+ #include <linux/string.h>
  
  MODULE_AUTHOR("Carlos Corbacho");
  MODULE_DESCRIPTION("Acer Laptop WMI Extras Driver");
@@ -85,6 +89,9 @@
  #define ACER_WMID_SET_GAMING_KB_BACKLIGHT_METHODID 20
  #define ACER_WMID_SET_GAMING_RGB_KB_METHODID 6
  #define ACER_WMID_GET_GAMING_RGB_KB_METHODID 7
+ 
+ #define ACER_GAMING_KBL_SET_ON BIT(3)
+ #define ACER_GAMING_KBL_SET_ALL_ZONES GENMASK_ULL(43, 40)
  
  #define ACER_PREDATOR_V4_FAN_SPEED_READ_BIT_MASK GENMASK(20, 8)
  #define ACER_GAMING_MISC_SETTING_STATUS_MASK GENMASK_ULL(7, 0)
@@ -149,7 +156,19 @@
     ACER_WMID_SENSOR_EXTERNAL_TEMPERATURE_2 = 0x03,
     ACER_WMID_SENSOR_GPU_FAN_SPEED		= 0x06,
     ACER_WMID_SENSOR_GPU_TEMPERATURE	= 0x0A,
+    /* PHN14-51 specific sensor IDs */
+    ACER_WMID_SENSOR_PHN14_CPU_FAN	= 0x19,  /* bit 25 */
+    ACER_WMID_SENSOR_PHN14_GPU_FAN	= 0x1A,  /* bit 26 */
+    ACER_WMID_SENSOR_PHN14_TEMP_1	= 0x1D,  /* bit 29 */
+    ACER_WMID_SENSOR_PHN14_TEMP_2	= 0x1E,  /* bit 30 */
+    ACER_WMID_SENSOR_PHN14_TEMP_3	= 0x21,  /* bit 33 */
 };
+
+/* PHN14-51 EC (Embedded Controller) offsets for direct reading */
+#define ACER_PHN14_EC_FAN_CPU_LSB	0x13
+#define ACER_PHN14_EC_FAN_CPU_MSB	0x14
+#define ACER_PHN14_EC_FAN_GPU_LSB	0x15
+#define ACER_PHN14_EC_FAN_GPU_MSB	0x16
 
 enum acer_wmi_predator_v4_oc {
     ACER_WMID_OC_NORMAL			= 0x0000,
@@ -335,7 +354,12 @@ enum acer_wmi_predator_v4_oc {
  static bool cycle_gaming_thermal_profile = true;
  static bool predator_v4;
  static bool nitro_v4;
+ static bool experimental_ph315_predator_v4;
  static u64 supported_sensors;
+ 
+ /* PH315-52 state tracking for features with non-standard return values */
+ static int ph315_52_backlight_timeout_state = 0;
+ static int ph315_52_battery_limiter_state = 0;
  
  module_param(mailled, int, 0444);
  module_param(brightness, int, 0444);
@@ -346,6 +370,7 @@ enum acer_wmi_predator_v4_oc {
  module_param(cycle_gaming_thermal_profile, bool, 0644);
  module_param(predator_v4, bool, 0444);
  module_param(nitro_v4, bool, 0444);
+ module_param(experimental_ph315_predator_v4, bool, 0444);
  MODULE_PARM_DESC(mailled, "Set initial state of Mail LED");
  MODULE_PARM_DESC(brightness, "Set initial LCD backlight brightness");
  MODULE_PARM_DESC(threeg, "Set initial state of 3G hardware");
@@ -358,6 +383,10 @@ enum acer_wmi_predator_v4_oc {
      "Enable features for predator laptops that use predator sense v4");
  MODULE_PARM_DESC(nitro_v4,
     "Enable features for nitro laptops that use nitro sense v4");
+ MODULE_PARM_DESC(experimental_ph315_predator_v4,
+    "EXPERIMENTAL, PH315-52/53 only: also probe the predator_sense v4 interface "
+    "(platform_profile, fan_speed, battery limiter, etc.) alongside the turbo hotkey. "
+    "Untested on this hardware generation - the relevant WMI methods may simply not exist.");
  
  struct acer_data {
      int mailled;
@@ -411,10 +440,15 @@ enum acer_wmi_predator_v4_oc {
      u8 nitro_v4;
      u8 nitro_sense;
      u8 four_zone_kb;
+     u8 predator_legacy;  // For older Predator models like PH315-52
+     u8 phn14_sensors; /* PHN14-51 specific sensors */
+     u8 nitro_hid_kb;
+     u8 an515_58_rgb_fix;
  };
  
  static struct quirk_entry *quirks;
- 
+ static struct platform_device *acer_platform_device;
+
  static void __init set_quirks(void)
  {
      if (quirks->mailled)
@@ -436,14 +470,21 @@ enum acer_wmi_predator_v4_oc {
          }
 
  
-     if (quirks->predator_v4)
-         interface->capability |= ACER_CAP_PLATFORM_PROFILE |
-                      ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
+    if (quirks->predator_v4 == 1)
+                interface->capability |= ACER_CAP_PLATFORM_PROFILE |
+                ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
+                else if (quirks->predator_v4 == 2)
+                /* PredatorSense v3: platform_profile methods not present in firmware */
+                interface->capability |= ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
      
      /* Includes all feature that predatorv4 have*/
      if (quirks->nitro_v4)
          interface->capability |= ACER_CAP_PLATFORM_PROFILE |
                  ACER_CAP_FAN_SPEED_READ  | ACER_CAP_NITRO_SENSE_V4;
+     
+     /* Legacy Predator models - Predator Sense features without platform profiles */
+     if (quirks->predator_legacy)
+         interface->capability |= ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
  }
  
  static int __init dmi_matched(const struct dmi_system_id *dmi)
@@ -476,9 +517,39 @@ enum acer_wmi_predator_v4_oc {
      .turbo = 1,
      .cpu_fans = 1,
      .gpu_fans = 1,
+     .predator_v4 = 1,      /* PR #121 (newer) chose v1; PR #98 had proposed v2 (PredatorSense v3, no platform_profile) */
+     .four_zone_kb = 1,     /* retained from PR #98 */
  };
- 
+
+ static struct quirk_entry quirk_acer_predator_ph315_54 = {
+     .predator_v4 = 1,
+     .four_zone_kb = 1,
+     .turbo = 1,
+     .cpu_fans = 1,
+     .gpu_fans = 1,
+ };
+
+ /*
+  * EXPERIMENTAL: same as quirk_acer_predator_ph315_53, but also probes the
+  * newer predator_sense v4 (ACER_WMID_GET_GAMING_SYS_INFO-based) interface
+  * for platform_profile/fan_speed/battery limiter/etc. That interface has
+  * never been confirmed to exist on PH315-53/PH315-52 firmware; opt in with
+  * the experimental_ph315_predator_v4=1 module parameter to test it without
+  * losing turbo hotkey support if it turns out to be unsupported.
+  */
+ static struct quirk_entry quirk_acer_predator_ph315_53_experimental = {
+     .turbo = 1,
+     .cpu_fans = 1,
+     .gpu_fans = 1,
+     .predator_v4 = 1,
+ };
+
  static struct quirk_entry quirk_acer_predator_phn16_71 = {
+     .predator_v4 = 1,
+     .four_zone_kb = 1,
+ };
+
+ static struct quirk_entry quirk_acer_predator_phn16s_71 = {
      .predator_v4 = 1,
      .four_zone_kb = 1,
  };
@@ -487,7 +558,18 @@ enum acer_wmi_predator_v4_oc {
     .predator_v4 = 1,
     .four_zone_kb = 1,
  };
- 
+
+ static struct quirk_entry quirk_acer_predator_phn14_51 = {
+    .predator_v4 = 1,
+    .four_zone_kb = 1,
+    .phn14_sensors = 1, /* Enable PHN14-51 specific sensor mappings */
+ };
+
+ static struct quirk_entry quirk_acer_predator_phn16_73 = {
+    .predator_v4 = 1,
+    .four_zone_kb = 1,
+ };
+
  static struct quirk_entry quirk_acer_nitro_an16_41 = {
     .nitro_v4 = 1,
     .four_zone_kb = 1,
@@ -500,25 +582,77 @@ enum acer_wmi_predator_v4_oc {
 
  static struct quirk_entry quirk_acer_nitro_anv16_41 = {
     .nitro_v4 = 1,
-    .four_zone_kb = 0,
+    .four_zone_kb = 1,
  };
 
-  static struct quirk_entry quirk_acer_nitro_an16_43 = {
+ static struct quirk_entry quirk_acer_nitro_anv16s_41 = {
+    .nitro_v4 = 1,
+    .four_zone_kb = 1,
+    .nitro_hid_kb = 1,
+ };
+ 
+ static struct quirk_entry quirk_acer_nitro_an16_43 = {
     .nitro_v4 = 1,
     .four_zone_kb = 1,
  };
- 
- static struct quirk_entry quirk_acer_nitro_legacy = {
-     .nitro_sense = 2,
+
+ static struct quirk_entry quirk_acer_nitro_an17_51 = {
+     .nitro_v4 = 1,
+     .four_zone_kb = 1,
  };
- 
+
+ static struct quirk_entry quirk_acer_nitro_an515_57 = {
+    .nitro_v4 = 1,
+ };
+
+static struct quirk_entry quirk_acer_nitro_anv16_71 = {
+    .nitro_v4 = 1,
+    .cpu_fans = 1,
+    .gpu_fans = 1,
+    .brightness = 1,
+    .turbo = 1,
+};
+
+ static struct quirk_entry quirk_acer_nitro_an515_45 = {
+    .nitro_sense = 2,
+    .four_zone_kb = 1,
+ };
+
  static struct quirk_entry quirk_acer_nitro_an515_58 = {
     .nitro_v4 = 1,
     .four_zone_kb = 1,
+    .an515_58_rgb_fix = 1,
  };
 
+ /*
+  * AN515-55 uses the nitro_sense (v1) interface, i.e. platform_profile plus
+  * fan-speed read. Its per-zone RGB needs the same byte-layout workaround as
+  * the AN515-58 (see set_per_zone_color); port of @fabiannabil1's fix via the
+  * AN515-55 fork.
+  */
+ static struct quirk_entry quirk_acer_nitro_an515_55 = {
+    .nitro_sense = 1,
+    .four_zone_kb = 1,
+    .an515_58_rgb_fix = 1,
+ };
 
- static struct quirk_entry quirk_acer_nitro = {
+static struct quirk_entry quirk_acer_nitro_an517_41 = {
+    .nitro_v4 = 1,
+    .four_zone_kb = 1,
+};
+
+
+static struct quirk_entry quirk_acer_nitro_an515_54 = {
+    .brightness = -1, /* Has 3 levels in official, enabling timeout disbales lights entirely until reboot. Disabled for now */
+    .turbo = 1, /* Doesn't seem to do anything with the GPU undetectable. */
+    .cpu_fans = 1,
+    .gpu_fans = 1,
+    .nitro_v4 = 1, 
+	/* Doesnt seem to Detect 1650 GPU. References MESA Drivers instead. Lables Model as Intel Host Bridge. 
+ 	Cant Read GPU Temp so Auto doesnt work for GPU, Set Speed to Manual for now. */
+ };
+
+static struct quirk_entry quirk_acer_nitro = {
      .nitro_sense = 1,
  };
  
@@ -591,6 +725,15 @@ enum acer_wmi_predator_v4_oc {
  static const struct dmi_system_id acer_quirks[] __initconst = {
      {
          .callback = dmi_matched,
+         .ident = "Acer Nitro AN17-51",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN17-51"),
+         },
+         .driver_data = &quirk_acer_nitro_an17_51,
+     },
+     {
+         .callback = dmi_matched,
          .ident = "Acer Nitro AN16-43",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
@@ -609,12 +752,48 @@ enum acer_wmi_predator_v4_oc {
      },
      {
         .callback = dmi_matched,
+        .ident = "Acer Nitro AN515-57",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-57"),
+        },
+        .driver_data = &quirk_acer_nitro_an515_57,
+    },
+     {
+        .callback = dmi_matched,
         .ident = "Acer Nitro AN515-58",
         .matches = {
             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-58"),
         },
         .driver_data = &quirk_acer_nitro_an515_58,
+    },
+    {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro AN515-55",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-55"),
+        },
+        .driver_data = &quirk_acer_nitro_an515_55,
+    },
+    {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro AN517-41",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN517-41"),
+        },
+        .driver_data = &quirk_acer_nitro_an517_41,
+    },
+    {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro AN517-54",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN517-54"),
+        },
+        .driver_data = &quirk_acer_nitro_v4,
     },
      {
          .callback = dmi_matched,
@@ -624,7 +803,7 @@ enum acer_wmi_predator_v4_oc {
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN16-41"),
          },
          .driver_data = &quirk_acer_nitro_an16_41,
-     },     
+     },
      {
          .callback = dmi_matched,
          .ident = "Acer Nitro ANV16-41",
@@ -634,6 +813,24 @@ enum acer_wmi_predator_v4_oc {
          },
          .driver_data = &quirk_acer_nitro_anv16_41,
      },
+    {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro ANV16S-41",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV16S-41"),
+        },
+        .driver_data = &quirk_acer_nitro_anv16s_41,
+    },
+     {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro ANV16-71",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV16-71"),
+        },
+        .driver_data = &quirk_acer_nitro_anv16_71,
+    },
      {
          .callback = dmi_matched,
          .ident = "Acer Nitro ANV15-41",
@@ -654,12 +851,30 @@ enum acer_wmi_predator_v4_oc {
      },
      {
          .callback = dmi_matched,
-         .ident = "Acer Nitro AN515-55",
+         .ident = "Acer Nitro ANV15-52",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-55"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV15-52"),
          },
-         .driver_data = &quirk_acer_nitro_legacy,
+         .driver_data = &quirk_acer_nitro,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Nitro AN515-54",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-54"),
+         },
+         .driver_data = &quirk_acer_nitro_an515_54,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Nitro AN515-45",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-45"),
+         },
+         .driver_data = &quirk_acer_nitro_an515_45,
      },
      {
          .callback = dmi_matched,
@@ -778,12 +993,39 @@ enum acer_wmi_predator_v4_oc {
          },
          .driver_data = &quirk_acer_predator_ph315_53,
      },
+    {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PH315-54",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH315-54"),
+         },
+         .driver_data = &quirk_acer_predator_ph315_54,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PH315-52",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH315-52"),
+         },
+         .driver_data = &quirk_acer_predator_ph315_53,
+     },
      {
          .callback = dmi_matched,
          .ident = "Acer Predator PHN16-71",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
              DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16-71"),
+         },
+         .driver_data = &quirk_acer_predator_phn16_71,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PHIN16-71",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHIN16-71"),
          },
          .driver_data = &quirk_acer_predator_phn16_71,
      },
@@ -795,22 +1037,67 @@ enum acer_wmi_predator_v4_oc {
             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16-72"),
         },
         .driver_data = &quirk_acer_predator_phn16_72,
-    },
-     {
-         .callback = dmi_matched,
-         .ident = "Acer Predator PH16-71",
-         .matches = {
-             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH16-71"),
-         },
-         .driver_data = &quirk_acer_predator_v4,
      },
+     {
+        .callback = dmi_matched,
+        .ident = "Acer Predator PHN16-73",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16-73"),
+        },
+        .driver_data = &quirk_acer_predator_phn16_73,
+     },
+     {
+        .callback = dmi_matched,
+        .ident = "Acer Predator PHN16S-71",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16S-71")
+        },
+        .driver_data = &quirk_acer_predator_phn16s_71,
+     },
+     {
+        .callback = dmi_matched,
+        .ident = "Acer Predator PHIN16S-71",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHIN16S-71")
+        },
+        .driver_data = &quirk_acer_predator_phn16s_71,
+     },
+     {
+        .callback = dmi_matched,
+        .ident = "Acer Predator PHN14-51",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN14-51"),
+        },
+        .driver_data = &quirk_acer_predator_phn14_51,
+    },
      {
          .callback = dmi_matched,
          .ident = "Acer Predator PH18-71",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
              DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH18-71"),
+         },
+         .driver_data = &quirk_acer_predator_v4,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PH16-72",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH16-72"),
+         },
+         .driver_data = &quirk_acer_predator_v4,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PH18-73",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH18-73"),
          },
          .driver_data = &quirk_acer_predator_v4,
      },
@@ -969,9 +1256,15 @@ enum acer_wmi_predator_v4_oc {
      } else if (force_series == 2490) {
          quirks = &quirk_acer_travelmate_2490;
      }
- 
+
      if (quirks == NULL)
          quirks = &quirk_unknown;
+
+     if (experimental_ph315_predator_v4 && quirks == &quirk_acer_predator_ph315_53) {
+         pr_warn("experimental_ph315_predator_v4 enabled: probing the predator_sense v4 "
+             "interface on hardware it has never been confirmed to support\n");
+         quirks = &quirk_acer_predator_ph315_53_experimental;
+     }
  }
  
  /*
@@ -1741,7 +2034,33 @@ enum acer_wmi_predator_v4_oc {
  
      return ret;
  }
-
+ 
+ /*
+  * Prefer the generic power-supply class over the WMI BAT_STATUS method: the
+  * latter lies on some models (notably Nitro), making the driver reject
+  * `quiet' / `balanced-performance' with -EOPNOTSUPP while actually on AC.
+  * Falls back to BAT_STATUS only when the power-supply class is unavailable.
+  */
+ static int acer_is_on_ac_power(void)
+ {
+     int supplied = power_supply_is_system_supplied();
+     u64 on_ac;
+     acpi_status status;
+ 
+     if (supplied > 0)
+         return 1;
+     if (supplied == 0)
+         return 0;
+ 
+     status = WMI_gaming_execute_u64(ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
+                                     ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS,
+                                     &on_ac);
+     if (ACPI_FAILURE(status))
+         return -EIO;
+ 
+     return on_ac ? 1 : 0;
+ }
+ 
  static acpi_status WMID_gaming_set_u64(u64 value, u32 cap)
  {
      u32 method_id = 0;
@@ -2029,7 +2348,7 @@ enum acer_wmi_predator_v4_oc {
      }
  
      acer_backlight_device = bd;
- 
+
      bd->props.power = BACKLIGHT_POWER_ON;
      bd->props.brightness = read_brightness(bd);
      backlight_update_status(bd);
@@ -2122,18 +2441,25 @@ enum acer_wmi_predator_v4_oc {
  static int acer_toggle_turbo(void)
  {
      u64 turbo_led_state;
- 
+     acpi_status status;
+
      /* Get current state from turbo button */
-     if (ACPI_FAILURE(WMID_gaming_get_u64(&turbo_led_state, ACER_CAP_TURBO_LED)))
+     status = WMID_gaming_get_u64(&turbo_led_state, ACER_CAP_TURBO_LED);
+     if (ACPI_FAILURE(status)) {
+         pr_err("Failed to read turbo LED state, ignoring hotkey press: %s\n",
+             acpi_format_exception(status));
          return -1;
- 
+     }
+
      if (turbo_led_state) {
          /* Turn off turbo led */
-         WMID_gaming_set_u64(0x1, ACER_CAP_TURBO_LED);
- 
+         status = WMID_gaming_set_u64(0x1, ACER_CAP_TURBO_LED);
+         if (ACPI_FAILURE(status))
+             pr_err("Failed to turn off turbo LED: %s\n", acpi_format_exception(status));
+
          /* Set FAN mode to auto */
          WMID_gaming_set_fan_mode(0x1);
- 
+
          /* Set OC to normal */
          if (has_cap(ACER_CAP_TURBO_OC)) {
              WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_OC_1,
@@ -2143,11 +2469,13 @@ enum acer_wmi_predator_v4_oc {
          }
      } else {
          /* Turn on turbo led */
-         WMID_gaming_set_u64(0x10001, ACER_CAP_TURBO_LED);
- 
+         status = WMID_gaming_set_u64(0x10001, ACER_CAP_TURBO_LED);
+         if (ACPI_FAILURE(status))
+             pr_err("Failed to turn on turbo LED: %s\n", acpi_format_exception(status));
+
          /* Set FAN mode to turbo */
          WMID_gaming_set_fan_mode(0x2);
- 
+
          /* Set OC to turbo mode */
          if (has_cap(ACER_CAP_TURBO_OC)) {
              WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_OC_1,
@@ -2156,6 +2484,10 @@ enum acer_wmi_predator_v4_oc {
                               ACER_WMID_OC_TURBO);
          }
      }
+
+     if (acer_platform_device)
+         sysfs_notify(&acer_platform_device->dev.kobj, "turbo_sense", "turbo_state");
+
      return turbo_led_state;
  }
  
@@ -2198,18 +2530,13 @@ enum acer_wmi_predator_v4_oc {
                        enum platform_profile_option profile)
  {
      int err,tp;
-     acpi_status status;
-     u64 on_AC;
+     int on_AC;
  
      /* Check Power Source */
-     status = WMI_gaming_execute_u64(
-         ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
-         ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
+     on_AC = acer_is_on_ac_power();
+     if (on_AC < 0)
+         return on_AC;
  
-     if (ACPI_FAILURE(status))
-         return -EIO;
- 
-     /* Check power source */
      /* Blocking these modes since in official version this is not supported when its not plugged in AC! */
      if(!on_AC && (profile == PLATFORM_PROFILE_PERFORMANCE || profile == PLATFORM_PROFILE_BALANCED_PERFORMANCE || profile == PLATFORM_PROFILE_QUIET)){
          return -EOPNOTSUPP;
@@ -2325,7 +2652,7 @@ enum acer_wmi_predator_v4_oc {
  {
      const int max_retries = 10;
      int delay_ms = 100;
-     if (!quirks->predator_v4 && !quirks->nitro_sense && !quirks->nitro_v4)
+     if (quirks->predator_v4 != 1 && quirks->nitro_sense != 1 && !quirks->nitro_v4)
          return 0;
      for (int attempt = 1; attempt <= max_retries; attempt++) {
          platform_profile_device = devm_platform_profile_register(
@@ -2357,18 +2684,14 @@ enum acer_wmi_predator_v4_oc {
      if (quirks->predator_v4 || quirks->nitro_sense || quirks->nitro_v4) {
          u8 current_tp;
          int tp, err;
-         u64 on_AC;
-         acpi_status status;
+         int on_AC;
          err = WMID_gaming_get_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, &current_tp);
          if (err)
              return err;
          /* Check power source */
-         status = WMI_gaming_execute_u64(
-             ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
-             ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
-         
-         if (ACPI_FAILURE(status))
-             return -EIO;
+         on_AC = acer_is_on_ac_power();
+         if (on_AC < 0)
+             return on_AC;
          
          /* On AC - define next profile transitions */
          if (!on_AC) {
@@ -2407,7 +2730,7 @@ enum acer_wmi_predator_v4_oc {
                 return -EOPNOTSUPP;
             }
         }
-
+ 
          err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, tp);
          if (err)
              return err;
@@ -2655,7 +2978,7 @@ enum acer_wmi_predator_v4_oc {
      }
  }
  
- static void acer_wmi_notify(union acpi_object *obj, void *context)
+static void acer_wmi_notify(union acpi_object *obj, void *context)
  {
      struct event_return_value return_value;
      u16 device_state;
@@ -2750,8 +3073,8 @@ enum acer_wmi_predator_v4_oc {
          break;
      }
  }
- 
- static acpi_status __init
+
+static acpi_status __init
  wmid3_set_function_mode(struct func_input_params *params,
              struct func_return_value *return_value)
  {
@@ -3042,7 +3365,7 @@ enum acer_wmi_predator_v4_oc {
          .uFunctionQuery = 0x1,
          .uReserved = { 0x0, 0x0 }
      };
-     struct get_battery_health_control_status_output ret;
+    struct get_battery_health_control_status_output ret;
  
      struct acpi_buffer input = {
          sizeof(struct get_battery_health_control_status_input), &params
@@ -3064,6 +3387,11 @@ enum acer_wmi_predator_v4_oc {
        }
      
        ret = *((struct get_battery_health_control_status_output *)obj->buffer.pointer);
+     
+     pr_info("battery_health_query result: uFunctionList=%d, uReturn=[%d,%d], uFunctionStatus=[%d,%d,%d,%d,%d]\n",
+             ret.uFunctionList, ret.uReturn[0], ret.uReturn[1], 
+             ret.uFunctionStatus[0], ret.uFunctionStatus[1], ret.uFunctionStatus[2], 
+             ret.uFunctionStatus[3], ret.uFunctionStatus[4]);
      
      if(mode == HEALTH_MODE){
          *enabled = ret.uFunctionStatus[0];
@@ -3116,9 +3444,10 @@ enum acer_wmi_predator_v4_oc {
      
        ret = *((struct set_battery_health_control_output  *)obj->buffer.pointer);
      
-     if(ret.uReturn != 0 && ret.uReservedOut != 0){
-         pr_err("Failed to set battery health status\n");
-         goto failed;
+     pr_info("battery_health_set result: uReturn=%d, uReservedOut=%d\n", ret.uReturn, ret.uReservedOut);
+     if(ret.uReturn != 0 || ret.uReservedOut != 0){
+         pr_warn("Battery health set returned non-zero values: uReturn=%d, uReservedOut=%d\n", ret.uReturn, ret.uReservedOut);
+         /* Don't fail immediately - some models might return non-zero success codes */
      }
  
      kfree(obj);
@@ -3140,6 +3469,15 @@ enum acer_wmi_predator_v4_oc {
      if (ACPI_FAILURE(status))
          return -ENODEV;
  
+     /* For PH315-52, the WMI query might not return the correct state immediately */
+     if (quirks->predator_legacy) {
+         /* Try to use hardware state if available, otherwise use tracked state */
+         if (enabled != 0) {
+             ph315_52_battery_limiter_state = enabled;
+         }
+         return sprintf(buf, "%d\n", ph315_52_battery_limiter_state);
+     }
+ 
      return sprintf(buf, "%d\n", enabled);
  }
  
@@ -3153,8 +3491,15 @@ enum acer_wmi_predator_v4_oc {
        if ((val != 0) && (val != 1))
          return -EINVAL;
        
-     if (battery_health_set(HEALTH_MODE,val) != AE_OK)
+     acpi_status status = battery_health_set(HEALTH_MODE, val);
+     if (ACPI_FAILURE(status))
          return -ENODEV;
+     
+     /* For PH315-52, track the state since hardware query might not reflect changes immediately */
+     if (quirks->predator_legacy) {
+         ph315_52_battery_limiter_state = val;
+         pr_info("PH315-52: Battery limiter state set to %d (may take effect after reboot)\n", val);
+     }
        
      return count;
  }
@@ -3299,7 +3644,7 @@ enum acer_wmi_predator_v4_oc {
      char *token;
      char* input_ptr = input;
      size_t len = min(count, sizeof(input) - 1);
-     strncpy(input, buf, len);
+     strscpy(input, buf, sizeof(input));
  
      if(input[len-1] == '\n'){
          input[len-1] = '\0';
@@ -3407,7 +3752,7 @@ enum acer_wmi_predator_v4_oc {
  
  static int acer_predator_state_load(void)
  {
-     u64 on_AC;
+     int on_AC;
      struct file *file;
      ssize_t len;
      acpi_status status;
@@ -3428,11 +3773,8 @@ enum acer_wmi_predator_v4_oc {
      }
  
      /* Always proceed to restore state based on power source */
-     status = WMI_gaming_execute_u64(
-         ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
-         ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
- 
-     if (ACPI_FAILURE(status)) {
+     on_AC = acer_is_on_ac_power();
+     if (on_AC < 0) {
          pr_err("Failed to query power source state\n");
          return -1;
      }
@@ -3450,15 +3792,13 @@ enum acer_wmi_predator_v4_oc {
  
  
  static int acer_predator_state_save(void){
-     u64 on_AC;
+     int on_AC;
      acpi_status status;
      struct file *file;
      ssize_t len;
  
-     status = WMI_gaming_execute_u64(
-         ACER_WMID_GET_GAMING_SYS_INFO_METHODID,
-         ACER_WMID_CMD_GET_PREDATOR_V4_BAT_STATUS, &on_AC);
-     if (ACPI_FAILURE(status))
+     on_AC = acer_is_on_ac_power();
+     if (on_AC < 0)
          return -1;
  
      /* update to the latest state based on power source */
@@ -3536,7 +3876,15 @@ enum acer_wmi_predator_v4_oc {
          return -ENODEV;
      }
      pr_info("backlight_timeout get status: %llu\n",result);
-     return sprintf(buf, "%d\n", result == 0x1E0000080000 ? 1 : result == 0x80000 ? 0 : -1);
+     
+     /* Handle different return values for different models */
+     if (quirks->predator_legacy) {
+         /* PH315-52: WMI calls work but return values are non-standard, use state tracking */
+         return sprintf(buf, "%d\n", ph315_52_backlight_timeout_state);
+     } else {
+         /* Newer Predator models */
+         return sprintf(buf, "%d\n", result == 0x1E0000080000ULL ? 1 : result == 0x80000 ? 0 : -1);
+     }
  }
  
  static ssize_t predator_backlight_timeout_store(struct device *dev, struct device_attribute *attr,const char *buf, size_t count){
@@ -3547,13 +3895,19 @@ enum acer_wmi_predator_v4_oc {
          return -EINVAL;
        if ((val != 0) && (val != 1))
          return -EINVAL;
-     pr_info("bascklight_timeout set value: %d\n",val);
+     pr_info("backlight_timeout set value: %d\n",val);
      status = WMI_apgeaction_execute_u64(ACER_WMID_SET_FUNCTION,val == 1 ? 0x1E0000088402 : 0x88402, &result);
      if(ACPI_FAILURE(status)){
          pr_err("Error setting backlight_timeout status: %s\n",acpi_format_exception(status));
          return -ENODEV;
      }
      pr_info("backlight_timeout set status: %llu\n",result);
+     
+     /* For PH315-52, track state since return values are non-standard */
+     if (quirks->predator_legacy) {
+         ph315_52_backlight_timeout_state = val;
+     }
+     
      return count;
  }
  
@@ -3611,14 +3965,53 @@ enum acer_wmi_predator_v4_oc {
      NULL
  };
  
+ /* PH315-52 Legacy Predator - testing all features */
+ static struct attribute *predator_legacy_attrs[] = {
+     &fan_speed.attr,                 // DONE! 
+     &usb_charging.attr,              // DONE!   
+     &lcd_override.attr,              // DONE! 
+     &boot_animation_sound.attr,      // DONE! 
+     &backlight_timeout.attr,         // DONE! 
+     &battery_limiter.attr,           // NOT-SUPPORTED FOR THIS MODEL (PH315-52)
+     &battery_calibration.attr,       // NOT-SUPPORTED FOR THIS MODEL (PH315-52)
+     NULL
+ };
+ 
  static struct attribute_group preadtor_sense_attr_group = {
      .name = "predator_sense", .attrs = predator_sense_attrs
+ };
+ 
+ static struct attribute_group predator_legacy_attr_group = {
+     .name = "predator_sense", .attrs = predator_legacy_attrs
  };
  
  static struct attribute_group nitro_sense_v4_attr_group = {
      .name = "nitro_sense", .attrs = predator_sense_attrs
  };
- 
+
+ /*
+  * turbo state (read-only). Userspace can poll(POLLPRI|POLLERR) on this
+  * file to be woken up on every turbo hotkey toggle instead of scraping
+  * dmesg; sysfs_notify() is called from acer_toggle_turbo().
+  */
+ static ssize_t turbo_state_show(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     u64 turbo_led_state;
+
+     if (ACPI_FAILURE(WMID_gaming_get_u64(&turbo_led_state, ACER_CAP_TURBO_LED)))
+         return -EIO;
+
+     return sprintf(buf, "%d\n", turbo_led_state ? 1 : 0);
+ }
+ static struct device_attribute turbo_state = __ATTR(turbo_state, 0444, turbo_state_show, NULL);
+ static struct attribute *turbo_sense_attrs[] = {
+     &turbo_state.attr,
+     NULL
+ };
+ static struct attribute_group turbo_sense_attr_group = {
+     .name = "turbo_sense", .attrs = turbo_sense_attrs
+ };
+
  /* nitro sense attributes */
  static struct attribute *nitro_sense_attrs[] = {
      &fan_speed.attr,
@@ -3632,6 +4025,115 @@ enum acer_wmi_predator_v4_oc {
      .name = "nitro_sense", .attrs = nitro_sense_attrs
  };
  
+ /* HID RGB Controller (0CF2:5130 via I2C, report 0xA4) */
+
+ #define ACER_HID_RGB_VID        0x0CF2
+ #define ACER_HID_RGB_PID        0x5130
+ #define ACER_HID_RGB_REPORT_ID  0xA4
+ #define ACER_HID_RGB_REPORT_LEN 20
+ #define ACER_HID_KB_TARGET      0x21
+ #define ACER_HID_LOGO_TARGET    0x53
+
+ /*
+  * HID mode codes differ from the sysfs numbering, which mirrors WMI, so
+  * the sysfs value must be translated, never passed through as-is.
+  */
+ #define ACER_HID_MODE_STATIC    0x02
+ #define ACER_HID_MODE_BREATHING 0x04
+ #define ACER_HID_MODE_NEON      0x05
+ #define ACER_HID_MODE_WAVE      0x07
+
+ static struct hid_device *acer_hid_rgb_dev = NULL;
+
+ /* sysfs/WMI mode -> HID mode; negative means the protocol has no such mode */
+ static int acer_hid_map_mode(int wmi_mode)
+ {
+     switch (wmi_mode) {
+     case 0: return ACER_HID_MODE_STATIC;
+     case 1: return ACER_HID_MODE_BREATHING;
+     case 2: return ACER_HID_MODE_NEON;
+     case 3: return ACER_HID_MODE_WAVE;
+     default: return -EOPNOTSUPP;
+     }
+ }
+
+ /*
+  * The controller only accepts this command as a 20-byte SET_FEATURE report.
+  * An output report of the same length is silently ignored, which is why
+  * writes appeared to succeed while the backlight never changed.
+  */
+ static int acer_hid_set_kb_feature(u8 target, u8 hid_mode, u8 brightness,
+                                     u8 r, u8 g, u8 b, u8 zone)
+ {
+     u8 *buf;
+     int ret;
+
+     if (!acer_hid_rgb_dev)
+         return -ENODEV;
+
+     /* hid_hw_raw_request() needs a DMA-capable buffer, so no stack storage */
+     buf = kzalloc(ACER_HID_RGB_REPORT_LEN, GFP_KERNEL);
+     if (!buf)
+         return -ENOMEM;
+
+     buf[0] = ACER_HID_RGB_REPORT_ID;
+     buf[1] = target;
+     buf[2] = hid_mode;
+     buf[3] = brightness;
+     /* bytes 4-5 are always zero in this protocol */
+     buf[6] = r;
+     buf[7] = g;
+     buf[8] = b;
+     buf[9] = zone;
+
+     ret = hid_hw_raw_request(acer_hid_rgb_dev, buf[0], buf,
+                              ACER_HID_RGB_REPORT_LEN,
+                              HID_FEATURE_REPORT, HID_REQ_SET_REPORT);
+     kfree(buf);
+     return ret;
+ }
+
+ static int acer_hid_rgb_probe(struct hid_device *hdev,
+                                const struct hid_device_id *id)
+ {
+     int ret;
+     ret = hid_parse(hdev);
+     if (ret)
+         return ret;
+     ret = hid_hw_start(hdev, HID_CONNECT_HIDRAW | HID_CONNECT_DRIVER);
+     if (ret)
+         return ret;
+     ret = hid_hw_open(hdev);
+     if (ret) {
+         hid_hw_stop(hdev);
+         return ret;
+     }
+     acer_hid_rgb_dev = hdev;
+     pr_info("Acer HID RGB keyboard controller found\n");
+     return 0;
+ }
+
+ static void acer_hid_rgb_remove(struct hid_device *hdev)
+ {
+     if (acer_hid_rgb_dev == hdev)
+         acer_hid_rgb_dev = NULL;
+     hid_hw_close(hdev);
+     hid_hw_stop(hdev);
+ }
+
+ static const struct hid_device_id acer_hid_rgb_table[] = {
+     { HID_I2C_DEVICE(ACER_HID_RGB_VID, ACER_HID_RGB_PID) },
+     { }
+ };
+ MODULE_DEVICE_TABLE(hid, acer_hid_rgb_table);
+
+ static struct hid_driver acer_hid_rgb_driver = {
+     .name     = "acer-hid-rgb",
+     .id_table = acer_hid_rgb_table,
+     .probe    = acer_hid_rgb_probe,
+     .remove   = acer_hid_rgb_remove,
+ };
+
  /* Four Zoned Keyboard  */
  
  struct get_four_zoned_kb_output {
@@ -3641,20 +4143,47 @@ enum acer_wmi_predator_v4_oc {
  
  static acpi_status set_kb_status(int mode, int speed, int brightness,
                                   int direction, int red, int green, int blue){
+     /* Use HID path on models where WMI silently ignores RGB commands */
+     if (quirks && quirks->nitro_hid_kb && acer_hid_rgb_dev) {
+         int hid_mode = acer_hid_map_mode(mode);
+         int ret;
+
+         if (hid_mode < 0) {
+             pr_err("KB mode %d has no HID equivalent on this model\n", mode);
+             return AE_SUPPORT;
+         }
+         /* speed and direction are not carried by the HID protocol */
+         ret = acer_hid_set_kb_feature(ACER_HID_KB_TARGET, (u8)hid_mode,
+                                        (u8)brightness,
+                                        (u8)red, (u8)green, (u8)blue,
+                                        0x0F);
+         return (ret >= 0) ? AE_OK : AE_ERROR;
+     }
+
      u64 resp = 0;
      u8 gmInput[16] = {mode, speed, brightness, 0, direction, red, green, blue, 3, 1, 0, 0, 0, 0, 0, 0};
-     
+
      acpi_status status;
      union acpi_object *obj;
      struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
      struct acpi_buffer input = { (acpi_size)sizeof(gmInput), (void *)(gmInput) };
-     
+
+     /*
+      * AN515-58/55: the backlight engine keeps the four zones disabled unless
+      * these bytes are laid out this way, so RAW per-zone colours silently do
+      * nothing. See set_per_zone_color() for the full fix.
+      */
+     if (quirks->an515_58_rgb_fix) {
+         gmInput[8] = 0;
+         gmInput[3] = (mode == 0x3) ? 8 : 0;
+     }
+
      status = wmi_evaluate_method(WMID_GUID4, 0, ACER_WMID_SET_GAMING_KB_BACKLIGHT_METHODID, &input, &output);
      if (ACPI_FAILURE(status))
          return status;
- 
+
      obj = (union acpi_object *) output.pointer;
- 
+
      if (obj) {
          if (obj->type == ACPI_TYPE_BUFFER) {
              if (obj->buffer.length == sizeof(u32))
@@ -3665,15 +4194,32 @@ enum acer_wmi_predator_v4_oc {
              resp = (u64) obj->integer.value;
          }
      }
- 
+
      if(resp != 0){
          pr_err("failed to set keyboard rgb: %llu\n",resp);
          kfree(obj);
          return AE_ERROR;
      }
- 
+
      kfree(obj);
      return status;
+ }
+ 
+ /*
+  * AN515-58/55: re-apply a plain static (single-colour) mode after the
+  * per-zone colours were pushed. WMI method 20 (SET_GAMING_KB_BACKLIGHT).
+  */
+ static acpi_status set_kb_static_mode(int brightness)
+ {
+     u8 gmInput[16] = {0};
+     struct acpi_buffer input = { (acpi_size)sizeof(gmInput), (void *)gmInput };
+ 
+     gmInput[2] = brightness;
+     gmInput[9] = 1;
+ 
+     return wmi_evaluate_method(WMID_GUID4, 0,
+                                ACER_WMID_SET_GAMING_KB_BACKLIGHT_METHODID,
+                                &input, NULL);
  }
  
  static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
@@ -3714,6 +4260,14 @@ enum acer_wmi_predator_v4_oc {
      int brightness;
  } __packed;
  
+ /* AN515-58/55 per-zone payload: zone bit + one 8-bit colour component each */
+ struct an515_58_static_rgb_param {
+     u8 zone;
+     u8 red;
+     u8 green;
+     u8 blue;
+ } __packed;
+ 
  struct kb_state {
      u8 per_zone;
      u8 mode;
@@ -3750,7 +4304,7 @@ enum acer_wmi_predator_v4_oc {
      char *input_ptr = input_buf;
      size_t len = min(count, sizeof(input_buf) - 1);
  
-     strncpy(input_buf, buf, len);
+     strscpy(input_buf, buf, sizeof(input_buf));
  
      if(input_buf[len-1] == '\n'){
          input_buf[len-1] = '\0';
@@ -3805,8 +4359,9 @@ enum acer_wmi_predator_v4_oc {
              speed = 0;
              direction = 0;
              break;
-         case 0x1:  // Breathing mode: Ignore speed
-             speed = 0;
+         case 0x1:  // Breathing mode: keep speed when the AN515-58 fix is active
+             if (!quirks->an515_58_rgb_fix)
+                 speed = 0;
              direction = 0;
              break;
          case 0x2:  // Neon mode: Ignore red, green, blue, and direction
@@ -3880,16 +4435,99 @@ enum acer_wmi_predator_v4_oc {
  
  
  static acpi_status set_per_zone_color(struct per_zone_color *input) {
-     acpi_status status;
      u64 *zones[] = { &input->zone1, &input->zone2, &input->zone3, &input->zone4 };
      u8 zone_ids[] = { 0x1, 0x2, 0x4, 0x8 };
+
+     /* Use HID path on models where WMI silently ignores RGB commands */
+     if (quirks && quirks->nitro_hid_kb && acer_hid_rgb_dev) {
+         for (int i = 0; i < 4; i++) {
+             u32 color = (u32)(*zones[i]);
+             u8 r = (color >> 16) & 0xFF;
+             u8 g = (color >> 8) & 0xFF;
+             u8 b = color & 0xFF;
+             int ret = acer_hid_set_kb_feature(ACER_HID_KB_TARGET,
+                                                ACER_HID_MODE_STATIC,
+                                                (u8)input->brightness,
+                                                r, g, b, zone_ids[i]);
+             if (ret < 0) {
+                 pr_err("HID error setting KB color (zone %d)\n", i + 1);
+                 return AE_ERROR;
+             }
+         }
+         current_kb_state.per_zone = 1;
+         /*
+          * State is read back over WMI, which knows nothing about the HID backlight
+          * on this model and returns junk. Remember what was set so that show()
+          * can report the truth.
+          */
+         current_kb_state.zones = *input;
+         return AE_OK;
+     }
+
+     acpi_status status;
  
+     /*
+      * AN515-58/55: WMI drops RAW per-zone colours unless the zones are
+      * switched on first and a static mode is applied afterwards. Ported from
+      * @fabiannabil1's fix (via the AN515-55 fork).
+      */
+     if (quirks->an515_58_rgb_fix) {
+         status = WMI_gaming_execute_u64(ACER_WMID_GET_GAMING_SYS_INFO_METHODID, 0, NULL);
+         if (ACPI_FAILURE(status)) {
+             pr_err("Error polling gaming system info before RGB update: %s\n",
+                    acpi_format_exception(status));
+             return status;
+         }
+
+         status = WMI_gaming_execute_u64(ACER_WMID_SET_GAMING_LED_METHODID,
+                                         ACER_GAMING_KBL_SET_ON | ACER_GAMING_KBL_SET_ALL_ZONES,
+                                         NULL);
+         if (ACPI_FAILURE(status)) {
+             pr_err("Error enabling AN515-58 keyboard RGB zones: %s\n",
+                    acpi_format_exception(status));
+             return status;
+         }
+
+         for (int i = 0; i < 4; i++) {
+             struct an515_58_static_rgb_param params;
+             struct acpi_buffer acpi_input;
+             u64 color = *zones[i];
+
+             params.zone = zone_ids[i];
+             params.red = (((color >> 16) & 0xff) * input->brightness) / 100;
+             params.green = (((color >> 8) & 0xff) * input->brightness) / 100;
+             params.blue = ((color & 0xff) * input->brightness) / 100;
+
+             acpi_input.length = sizeof(params);
+             acpi_input.pointer = &params;
+
+             status = wmi_evaluate_method(WMID_GUID4, 0,
+                                          ACER_WMID_SET_GAMING_RGB_KB_METHODID,
+                                          &acpi_input, NULL);
+             if (ACPI_FAILURE(status)) {
+                 pr_err("Error setting AN515-58 RGB color (zone %d): %s\n",
+                        i + 1, acpi_format_exception(status));
+                 return status;
+             }
+         }
+
+         status = set_kb_static_mode(input->brightness);
+         if (ACPI_FAILURE(status)) {
+             pr_err("Error enabling AN515-58 static RGB mode: %s\n",
+                    acpi_format_exception(status));
+             return status;
+         }
+
+         current_kb_state.per_zone = 1;
+         return AE_OK;
+     }
+
      status = set_kb_status(0, 0, input->brightness, 0, 0, 0, 0);
      if (ACPI_FAILURE(status)) {
          pr_err("Error setting KB status.\n");
          return -ENODEV;
      }
- 
+
      for (int i = 0; i < 4; i++) {
          *zones[i] = (cpu_to_be64(*zones[i]) >> 32) | zone_ids[i];
          status = WMI_gaming_execute_u64(ACER_WMID_SET_GAMING_RGB_KB_METHODID, *zones[i], NULL);
@@ -3899,15 +4537,23 @@ enum acer_wmi_predator_v4_oc {
          }
      }
      /* set per_zone to 1*/
- 
+
      current_kb_state.per_zone = 1;
- 
-     return status;  
+
+     return status;
  }
- 
  static ssize_t per_zoned_rgb_kb_show(struct device *dev, struct device_attribute *attr,char *buf){
      struct per_zone_color output;
      acpi_status status;
+
+     /* WMI does not reflect reality on HID models, so report the cached value */
+     if (quirks && quirks->nitro_hid_kb && acer_hid_rgb_dev) {
+         output = current_kb_state.zones;
+         return sprintf(buf,"%06llx,%06llx,%06llx,%06llx,%d\n",
+                        output.zone1, output.zone2, output.zone3, output.zone4,
+                        output.brightness);
+     }
+
      status = get_per_zone_color(&output);
      if(ACPI_FAILURE(status)){
          return -ENODEV;
@@ -3923,7 +4569,7 @@ enum acer_wmi_predator_v4_oc {
      struct per_zone_color colors;
      char *input_ptr = str_buf;
      len = min(count, sizeof(str_buf) - 1);
-     strncpy(str_buf, buf, len);
+     strscpy(str_buf, buf, sizeof(str_buf));
      if(str_buf[len-1] == '\n'){
          str_buf[len-1] = '\0';
      } else {
@@ -3981,11 +4627,18 @@ enum acer_wmi_predator_v4_oc {
      current_kb_state.green = out.gmOutput[6];
      current_kb_state.blue = out.gmOutput[7];
  
-     // Get per-zone color data
-     status = get_per_zone_color(&current_kb_state.zones);
-     if (ACPI_FAILURE(status)) {
-         pr_err("get_per_zone_color failed!");
-         return -1;
+     /*
+      * On HID models WMI does not reflect the backlight state and returns
+      * junk, clobbering the cache kept by set_per_zone_color(). The zones
+      * there are already accurate: restored from the state file or set
+      * through sysfs.
+      */
+     if (!(quirks && quirks->nitro_hid_kb)) {
+         status = get_per_zone_color(&current_kb_state.zones);
+         if (ACPI_FAILURE(status)) {
+             pr_err("get_per_zone_color failed!");
+             return -1;
+         }
      }
      return 0;
  }
@@ -4097,7 +4750,13 @@ enum acer_wmi_predator_v4_oc {
      err = acer_rfkill_init(&device->dev);
      if (err)
          goto error_rfkill;
- 
+
+     if (has_cap(ACER_CAP_TURBO_LED)) {
+         err = sysfs_create_group(&device->dev.kobj, &turbo_sense_attr_group);
+         if (err)
+             goto error_turbo_sense;
+     }
+
      if (has_cap(ACER_CAP_PLATFORM_PROFILE)) {
          err = acer_platform_profile_setup(device);
          if (err)
@@ -4105,7 +4764,12 @@ enum acer_wmi_predator_v4_oc {
      }
  
      if (has_cap(ACER_CAP_PREDATOR_SENSE)) {
-         err = sysfs_create_group(&device->dev.kobj, &preadtor_sense_attr_group);
+         /* Use legacy attribute group for older Predator models like PH315-52 */
+         if (quirks->predator_legacy) {
+             err = sysfs_create_group(&device->dev.kobj, &predator_legacy_attr_group);
+         } else {
+             err = sysfs_create_group(&device->dev.kobj, &preadtor_sense_attr_group);
+         }
          if (err)
              goto error_predator_sense;
          acer_predator_state_load();
@@ -4152,6 +4816,8 @@ enum acer_wmi_predator_v4_oc {
      return err;
  error_predator_sense:
      return err;
+ error_turbo_sense:
+     return err;
  error_mailled:
      return err;
  }
@@ -4163,8 +4829,15 @@ enum acer_wmi_predator_v4_oc {
          acer_led_exit();
      if (has_cap(ACER_CAP_BRIGHTNESS))
          acer_backlight_exit();
+     if (has_cap(ACER_CAP_TURBO_LED))
+         sysfs_remove_group(&device->dev.kobj, &turbo_sense_attr_group);
      if (has_cap(ACER_CAP_PREDATOR_SENSE)) {
-         sysfs_remove_group(&device->dev.kobj, &preadtor_sense_attr_group);
+         /* Remove the appropriate attribute group */
+         if (quirks->predator_legacy) {
+             sysfs_remove_group(&device->dev.kobj, &predator_legacy_attr_group);
+         } else {
+             sysfs_remove_group(&device->dev.kobj, &preadtor_sense_attr_group);
+         }
          acer_predator_state_save();
      }
      if (has_cap(ACER_CAP_NITRO_SENSE)) {
@@ -4251,9 +4924,7 @@ enum acer_wmi_predator_v4_oc {
      .remove = acer_platform_remove,
      .shutdown = acer_platform_shutdown,
  };
- 
- static struct platform_device *acer_platform_device;
- 
+
  static void remove_debugfs(void)
  {
      debugfs_remove_recursive(interface->debug.root);
@@ -4266,17 +4937,30 @@ enum acer_wmi_predator_v4_oc {
      debugfs_create_u32("devices", S_IRUGO, interface->debug.root,
                 &interface->debug.wmid_devices);
  }
-
+ 
+ /* Default sensor mappings for PHN16 and other standard models */
  static const enum acer_wmi_predator_v4_sensor_id acer_wmi_temp_channel_to_sensor_id[] = {
     [0] = ACER_WMID_SENSOR_CPU_TEMPERATURE,
     [1] = ACER_WMID_SENSOR_GPU_TEMPERATURE,
     [2] = ACER_WMID_SENSOR_EXTERNAL_TEMPERATURE_2,
 };
-
-static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_id[] = {
+ 
+ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_id[] = {
     [0] = ACER_WMID_SENSOR_CPU_FAN_SPEED,
     [1] = ACER_WMID_SENSOR_GPU_FAN_SPEED,
 };
+ 
+ /* PHN14-51 specific sensor mappings */
+ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_temp_channel_to_sensor_id_phn14[] = {
+    [0] = ACER_WMID_SENSOR_PHN14_TEMP_1,
+    [1] = ACER_WMID_SENSOR_PHN14_TEMP_2,
+    [2] = ACER_WMID_SENSOR_PHN14_TEMP_3,
+ };
+ 
+ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_id_phn14[] = {
+    [0] = ACER_WMID_SENSOR_PHN14_CPU_FAN,
+    [1] = ACER_WMID_SENSOR_PHN14_GPU_FAN,
+ };
  
  static umode_t acer_wmi_hwmon_is_visible(const void *data,
                       enum hwmon_sensor_types type, u32 attr,
@@ -4284,57 +4968,133 @@ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_
  {
      enum acer_wmi_predator_v4_sensor_id sensor_id;
      const u64 *supported_sensors = data;
- 
-     switch (type) {
-     case hwmon_temp:
-         sensor_id = acer_wmi_temp_channel_to_sensor_id[channel];
-         break;
-     case hwmon_fan:
-         sensor_id = acer_wmi_fan_channel_to_sensor_id[channel];
-         break;
-     default:
-         return 0;
+     const enum acer_wmi_predator_v4_sensor_id *temp_sensors;
+     const enum acer_wmi_predator_v4_sensor_id *fan_sensors;
+     
+     /* Select appropriate sensor mapping based on model */
+     if (quirks->phn14_sensors) {
+         temp_sensors = acer_wmi_temp_channel_to_sensor_id_phn14;
+         fan_sensors = acer_wmi_fan_channel_to_sensor_id_phn14;
+     } else {
+         temp_sensors = acer_wmi_temp_channel_to_sensor_id;
+         fan_sensors = acer_wmi_fan_channel_to_sensor_id;
      }
  
-     if (*supported_sensors & BIT(sensor_id - 1))
-         return 0444;
+     switch (type) {
+    case hwmon_temp:
+        sensor_id = temp_sensors[channel];
+        break;
+    case hwmon_fan:
+        sensor_id = fan_sensors[channel];
+        break;
+    default:
+        return 0;
+    }
  
+    /* For PHN14-51, supported_sensors is already shifted down by 24 bits via FIELD_GET.
+     * Sensor IDs are absolute (0x19=25, 0x1A=26 etc), so we need to subtract 24 to get 
+     * the bit position in the shifted value. For standard models, sensor IDs start at 1.
+     */
+    if (quirks->phn14_sensors) {
+        /* PHN14 sensor IDs (0x19-0x21) need to be adjusted for the 24-bit shift */
+        if (*supported_sensors & BIT(sensor_id - 0x18 - 1))
+            return 0444;
+    } else {
+        /* Standard models: sensor IDs start at 1, so just subtract 1 */
+        if (*supported_sensors & BIT(sensor_id - 1))
+            return 0444;
+    }
+ 
+    return 0;
+ }
+ 
+ /* PHN14-51: Read fan RPM directly from EC (Embedded Controller) 
+  * WMI sensor reading doesn't work on PHN14-51, but EC exposes the data.
+  * Fan speeds are stored as 16-bit little-endian values in EC memory.
+  */
+ static int acer_phn14_read_ec_fan(int channel, long *val)
+ {
+     u8 lsb, msb;
+     u8 lsb_offset, msb_offset;
+     int ret;
+     
+     /* Determine EC offsets based on channel */
+     if (channel == 0) {
+         /* CPU fan */
+         lsb_offset = ACER_PHN14_EC_FAN_CPU_LSB;
+         msb_offset = ACER_PHN14_EC_FAN_CPU_MSB;
+     } else {
+         /* GPU fan */
+         lsb_offset = ACER_PHN14_EC_FAN_GPU_LSB;
+         msb_offset = ACER_PHN14_EC_FAN_GPU_MSB;
+     }
+     
+     /* Read EC bytes */
+     ret = ec_read(lsb_offset, &lsb);
+     if (ret < 0)
+         return ret;
+     
+     ret = ec_read(msb_offset, &msb);
+     if (ret < 0)
+         return ret;
+     
+     /* Combine as little-endian 16-bit value */
+    *val = lsb | (msb << 8);
+     
      return 0;
  }
  
  static int acer_wmi_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
-                    u32 attr, int channel, long *val)
+                     u32 attr, int channel, long *val)
  {
      u64 command = ACER_WMID_CMD_GET_PREDATOR_V4_SENSOR_READING;
      u64 result;
      int ret;
+     const enum acer_wmi_predator_v4_sensor_id *temp_sensors;
+     const enum acer_wmi_predator_v4_sensor_id *fan_sensors;
+     
+     /* Select appropriate sensor mapping based on model */
+     if (quirks->phn14_sensors) {
+         temp_sensors = acer_wmi_temp_channel_to_sensor_id_phn14;
+         fan_sensors = acer_wmi_fan_channel_to_sensor_id_phn14;
+     } else {
+         temp_sensors = acer_wmi_temp_channel_to_sensor_id;
+         fan_sensors = acer_wmi_fan_channel_to_sensor_id;
+     }
  
      switch (type) {
-     case hwmon_temp:
-         command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
-                       acer_wmi_temp_channel_to_sensor_id[channel]);
+    case hwmon_temp:
+        command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
+                      temp_sensors[channel]);
  
-         ret = WMID_gaming_get_sys_info(command, &result);
-         if (ret < 0)
-             return ret;
+        ret = WMID_gaming_get_sys_info(command, &result);
+        if (ret < 0)
+            return ret;
  
-         result = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
-         *val = result * MILLIDEGREE_PER_DEGREE;
-         return 0;
-     case hwmon_fan:
-         command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
-                       acer_wmi_fan_channel_to_sensor_id[channel]);
+        result = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
+        *val = result * MILLIDEGREE_PER_DEGREE;
+        return 0;
+    case hwmon_fan:
+        /* PHN14-51: Use EC direct reading instead of WMI */
+        if (quirks->phn14_sensors) {
+            return acer_phn14_read_ec_fan(channel, val);
+        }
+        
+        /* Standard WMI reading for other models */
+        command |= FIELD_PREP(ACER_PREDATOR_V4_SENSOR_INDEX_BIT_MASK,
+                      fan_sensors[channel]);
  
-         ret = WMID_gaming_get_sys_info(command, &result);
-         if (ret < 0)
-             return ret;
+        ret = WMID_gaming_get_sys_info(command, &result);
+        if (ret < 0) {
+            return ret;
+        }
  
-         *val = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
-         return 0;
-     default:
-         return -EOPNOTSUPP;
-     }
- } 
+        *val = FIELD_GET(ACER_PREDATOR_V4_SENSOR_READING_BIT_MASK, result);
+        return 0;
+    default:
+        return -EOPNOTSUPP;
+    }
+ }
  
  static const struct hwmon_channel_info *const acer_wmi_hwmon_info[] = {
      HWMON_CHANNEL_INFO(temp,
@@ -4367,21 +5127,20 @@ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_
      int ret;
  
      ret = WMID_gaming_get_sys_info(ACER_WMID_CMD_GET_PREDATOR_V4_SUPPORTED_SENSORS, &result);
-     if (ret < 0)
-         return ret;
+    if (ret < 0)
+       return ret;
  
      /* Return early if no sensors are available */
-     supported_sensors = FIELD_GET(ACER_PREDATOR_V4_SUPPORTED_SENSORS_BIT_MASK, result);
-     if (!supported_sensors)
-         return 0;
- 
-     hwmon = devm_hwmon_device_register_with_info(dev, "acer",
-                              &supported_sensors,
-                              &acer_wmi_hwmon_chip_info,
-                              NULL);
+    supported_sensors = FIELD_GET(ACER_PREDATOR_V4_SUPPORTED_SENSORS_BIT_MASK, result);
+    if (!supported_sensors)
+        return 0;
+    hwmon = devm_hwmon_device_register_with_info(dev, "acer",
+                             &supported_sensors,
+                             &acer_wmi_hwmon_chip_info,
+                             NULL);
  
      if (IS_ERR(hwmon)) {
-         dev_err(dev, "Could not register acer hwmon device\n");
+        dev_err(dev, "Could not register acer hwmon device\n");
          return PTR_ERR(hwmon);
      }
  
@@ -4524,9 +5283,12 @@ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_
  
      /* Override any initial settings with values from the commandline */
      acer_commandline_init();
- 
+
+     if (hid_register_driver(&acer_hid_rgb_driver))
+         pr_warn("Failed to register Acer HID RGB driver\n");
+
      return 0;
- 
+
  error_device_add:
      platform_device_put(acer_platform_device);
  error_device_alloc:
@@ -4548,10 +5310,11 @@ static const enum acer_wmi_predator_v4_sensor_id acer_wmi_fan_channel_to_sensor_
      if (acer_wmi_accel_dev)
          input_unregister_device(acer_wmi_accel_dev);
  
+     hid_unregister_driver(&acer_hid_rgb_driver);
      remove_debugfs();
      platform_device_unregister(acer_platform_device);
      platform_driver_unregister(&acer_platform_driver);
- 
+
      pr_info("Acer Laptop WMI Extras unloaded\n");
  }
  
