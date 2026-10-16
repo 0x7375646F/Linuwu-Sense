@@ -293,6 +293,15 @@ The thermal and fan profiles will be saved and loaded on each reboot, ensuring t
 - [x] Module Persistence After Reboot.
 - [ ] Custom Boot Logo Feature Support.
 - [ ] Improve device support (currently only the PHN16-71 is fully supported).
+- [x] PHN14-51 support (EC-based fan RPM reading)
+
+## ✅ Supported Models
+
+### Fully Supported
+- **Acer Predator PHN16-71** - All features via WMI
+- **Acer Predator PHN14-51** - All features (EC direct reading for fans)
+
+See [PHN14-51 Documentation](docs/PHN14-51.md) for technical details on EC implementation.
 
 ## License
 GNU General Public License v3
