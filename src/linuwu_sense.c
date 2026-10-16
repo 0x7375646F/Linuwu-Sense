@@ -517,8 +517,8 @@ enum acer_wmi_predator_v4_oc {
      .turbo = 1,
      .cpu_fans = 1,
      .gpu_fans = 1,
-     .predator_v4 = 2,
-     .four_zone_kb = 1,
+     .predator_v4 = 1,      /* PR #121 (newer) chose v1; PR #98 had proposed v2 (PredatorSense v3, no platform_profile) */
+     .four_zone_kb = 1,     /* retained from PR #98 */
  };
 
  static struct quirk_entry quirk_acer_predator_ph315_54 = {
