@@ -455,9 +455,12 @@ module_param(nitro_v4, bool, 0444);
          }
 
  
-     if (quirks->predator_v4)
-         interface->capability |= ACER_CAP_PLATFORM_PROFILE |
-                      ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
+    if (quirks->predator_v4 == 1)
+                interface->capability |= ACER_CAP_PLATFORM_PROFILE |
+                ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
+                else if (quirks->predator_v4 == 2)
+                /* PredatorSense v3: platform_profile methods not present in firmware */
+                interface->capability |= ACER_CAP_FAN_SPEED_READ | ACER_CAP_PREDATOR_SENSE;
      
      /* Includes all feature that predatorv4 have*/
      if (quirks->nitro_v4)
@@ -507,7 +510,9 @@ module_param(nitro_v4, bool, 0444);
      .turbo = 1,
      .cpu_fans = 1,
      .gpu_fans = 1,
-};
+     .predator_v4 = 2,
+     .four_zone_kb = 1,
+ };
 
  static struct quirk_entry quirk_acer_predator_ph315_54 = {
      .predator_v4 = 1,
@@ -2490,7 +2495,7 @@ static struct quirk_entry quirk_acer_nitro = {
  {
      const int max_retries = 10;
      int delay_ms = 100;
-     if (!quirks->predator_v4 && !quirks->nitro_sense && !quirks->nitro_v4)
+     if (quirks->predator_v4 != 1 && quirks->nitro_sense != 1 && !quirks->nitro_v4)
          return 0;
      for (int attempt = 1; attempt <= max_retries; attempt++) {
          platform_profile_device = devm_platform_profile_register(
