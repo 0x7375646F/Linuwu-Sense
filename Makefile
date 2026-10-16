@@ -8,7 +8,7 @@ $(obj-m:.o=.c): src/$(obj-m:.o=.c)
 		ln -sf src/$(obj-m:.o=.c) $(obj-m:.o=.c); \
 	fi
 
-KVER  ?= $(shell uname -r)
+KVER  ?= $(if $(KERNELRELEASE),$(KERNELRELEASE),$(shell uname -r))
 KDIR  := /lib/modules/$(KVER)/build
 PWD   := $(shell pwd)
 

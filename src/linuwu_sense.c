@@ -39,6 +39,7 @@
  #include <linux/bitfield.h>
  #include <linux/bitmap.h>
  #include <linux/hid.h>
+ #include <linux/string.h>
  
  MODULE_AUTHOR("Carlos Corbacho");
  MODULE_DESCRIPTION("Acer Laptop WMI Extras Driver");
@@ -774,6 +775,15 @@ static struct quirk_entry quirk_acer_nitro = {
             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN517-41"),
         },
         .driver_data = &quirk_acer_nitro_an517_41,
+    },
+    {
+        .callback = dmi_matched,
+        .ident = "Acer Nitro AN517-54",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN517-54"),
+        },
+        .driver_data = &quirk_acer_nitro_v4,
     },
      {
          .callback = dmi_matched,
