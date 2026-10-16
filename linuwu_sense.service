@@ -4,7 +4,7 @@ Description=Unload linuwu_sense at shutdown
 [Service]
 Type=oneshot
 RemainAfterExit=true
-ExecStop=/sbin/rmmod linuwu_sense 
+ExecStop=/usr/bin/rmmod linuwu_sense
 
 [Install]
 WantedBy=multi-user.target
