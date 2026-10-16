@@ -356,7 +356,6 @@ enum acer_wmi_predator_v4_oc {
  /* PH315-52 state tracking for features with non-standard return values */
  static int ph315_52_backlight_timeout_state = 0;
  static int ph315_52_battery_limiter_state = 0;
- static int ph315_52_battery_calibration_state = 0;
  
  module_param(mailled, int, 0444);
  module_param(brightness, int, 0444);
@@ -644,10 +643,6 @@ static struct quirk_entry quirk_acer_nitro = {
  };
  
  static struct quirk_entry quirk_acer_predator_v4 = {
-     .predator_v4 = 1,
- };
-
- static struct quirk_entry quirk_acer_nitro_anv4 = {
      .predator_v4 = 1,
  };
  
