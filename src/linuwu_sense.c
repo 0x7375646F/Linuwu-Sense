@@ -521,6 +521,11 @@ module_param(nitro_v4, bool, 0444);
      .predator_v4 = 1,
      .four_zone_kb = 1,
  };
+
+ static struct quirk_entry quirk_acer_predator_phn16s_71 = {
+     .predator_v4 = 1,
+     .four_zone_kb = 1,
+ };
  
  static struct quirk_entry quirk_acer_predator_phn16_72 = {
     .predator_v4 = 1,
@@ -974,6 +979,15 @@ static struct quirk_entry quirk_acer_nitro = {
              DMI_MATCH(DMI_PRODUCT_NAME, "Predator PTX17-71"),
          },
          .driver_data = &quirk_acer_predator_v4,
+     },
+	 {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PHN16S-71",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PHN16S-71"),
+         },
+         .driver_data = &quirk_acer_predator_phn16s_71,
      },
      {
          .callback = set_force_caps,
