@@ -547,6 +547,11 @@ module_param(nitro_v4, bool, 0444);
     .nitro_v4 = 1,
     .four_zone_kb = 0,
  };
+ 
+ static struct quirk_entry quirk_acer_nitro_anv16s_41 = {
+    .nitro_v4 = 1,
+    .four_zone_kb = 1,
+ };
 
  static struct quirk_entry quirk_acer_nitro_an16_43 = {
     .nitro_v4 = 1,
@@ -589,6 +594,10 @@ static struct quirk_entry quirk_acer_nitro = {
  };
  
  static struct quirk_entry quirk_acer_predator_v4 = {
+     .predator_v4 = 1,
+ };
+
+ static struct quirk_entry quirk_acer_nitro_anv4 = {
      .predator_v4 = 1,
  };
  
@@ -708,6 +717,15 @@ static struct quirk_entry quirk_acer_nitro = {
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV16-41"),
          },
          .driver_data = &quirk_acer_nitro_anv16_41,
+     },
+          {
+         .callback = dmi_matched,
+         .ident = "Acer Nitro ANV16S-41",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV16S-41"),
+         },
+         .driver_data = &quirk_acer_nitro_anv16s_41,
      },
      {
         .callback = dmi_matched,
