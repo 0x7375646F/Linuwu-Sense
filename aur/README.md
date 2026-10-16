@@ -1,12 +1,25 @@
 # Arch Linux packaging (AUR)
 
-DKMS package for this repository: `linuwu-sense-an515-55-dkms`.
+This directory holds **two independent packages**, each with its own recipe,
+version line and release cycle. Build either one, or both:
+
+| Package | Directory | What it is |
+| --- | --- | --- |
+| `linuwu-sense-an515-55-dkms` | `aur/` | The DKMS kernel module (this directory) |
+| `linusexcli` | `aur/linusexcli/` | A standalone CLI to control the driver |
+
+The CLI has no build-time dependency on the module — it only talks to the
+driver's sysfs files at runtime — so it declares the module as an `optdepends`.
+`makepkg -si` on the CLI never drags in `dkms`, and installing the module never
+drags in the CLI.
+
+## Module package: `linuwu-sense-an515-55-dkms`
 
 Ships the **driver only** — the `linuwu_sense` module plus its systemd units and
 `modules-load.d` / `modprobe.d` / `tmpfiles.d` drop-ins. The GUI, Turbo OSD and
 profile notifier are not part of this package.
 
-## Files
+### Files
 
 | File | Purpose |
 | --- | --- |
@@ -15,7 +28,7 @@ profile notifier are not part of this package.
 | `linuwu-sense.install` | Applies sysfs permissions and enables the units |
 | `linuwu-sense-setup.service` | Re-applies sysfs permissions after the module loads |
 
-## Build and install
+### Build and install
 
 ```bash
 cd aur
@@ -26,6 +39,31 @@ makepkg -si
 No further setup: the module is registered with DKMS (and rebuilds on kernel
 upgrades), loads at boot, and its controls are available to every user straight
 away.
+
+## CLI package: `linusexcli`
+
+A standard-library-only zipapp built from the repo's `cli/` with
+`cli/build.pyz.sh` and installed as `/usr/bin/linusexcli`. It needs only
+`python` at runtime.
+
+### Files
+
+| File | Purpose |
+| --- | --- |
+| `linusexcli/PKGBUILD` | Build recipe; runs `cli/build.pyz.sh` and installs the zipapp |
+| `linusexcli/.SRCINFO` | Generated metadata (`makepkg --printsrcinfo > .SRCINFO`) |
+
+### Build and install
+
+```bash
+cd aur/linusexcli
+sudo pacman -S --needed base-devel python
+makepkg -si
+```
+
+The driver is optional: the CLI builds and installs on its own, and reports a
+clear error if the module is not loaded. Install `linuwu-sense-an515-55-dkms`
+(above) to actually control the hardware.
 
 ## Permissions
 
@@ -41,8 +79,14 @@ a group if you want to restrict it.
 
 ## Versioning
 
-The recipe clones this repo at `#tag=v$pkgver`, so **`pkgver` and the git tag
-must match**. To cut a release:
+Both recipes clone this repo at `#tag=v$pkgver`, so **each `pkgver` must have a
+matching git tag** — but the two packages release independently:
+
+- **Module** (`linuwu-sense-an515-55-dkms`) tracks the DKMS version.
+- **CLI** (`linusexcli`) has its own version line (currently `0.1.0`), kept in
+  sync with `cli/pyproject.toml`.
+
+To cut a module release:
 
 1. Bump `PACKAGE_VERSION` in `dkms.conf` to the new version (DKMS requires the
    tree to be `/usr/src/linuwu_sense-<PACKAGE_VERSION>`).
@@ -50,12 +94,19 @@ must match**. To cut a release:
 3. Set `pkgver` in `PKGBUILD`, reset `pkgrel=1`, and refresh `.SRCINFO`:
    `makepkg --printsrcinfo > .SRCINFO`.
 
-`package()` also rewrites `PACKAGE_VERSION` to `$pkgver` inside the installed
-`dkms.conf`, so the DKMS tree name and the config can never drift apart.
+To cut a CLI release: bump `version` in `cli/pyproject.toml`, tag the repo
+`v<version>`, set `pkgver` in `aur/linusexcli/PKGBUILD`, reset `pkgrel=1`, and
+refresh `aur/linusexcli/.SRCINFO`.
+
+`package()` also rewrites `PACKAGE_VERSION` to `$pkgver` inside the module's
+installed `dkms.conf`, so the DKMS tree name and the config can never drift
+apart.
 
 ## Validate
 
 ```bash
-namcap PKGBUILD
-makepkg -sf
+namcap PKGBUILD                    # module
+namcap linusexcli/PKGBUILD         # CLI
+makepkg -sf                        # module
+(cd linusexcli && makepkg -sf)     # CLI
 ```

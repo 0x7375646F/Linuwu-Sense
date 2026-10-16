@@ -1,0 +1,20 @@
+[project]
+name = "linusexcli"
+version = "0.1.0"
+description = "CLI to control the Linuwu-Sense kernel module on Acer Predator/Nitro laptops (stdlib-only runtime)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+dependencies = []
+
+[project.scripts]
+linusexcli = "linusexcli.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+]
