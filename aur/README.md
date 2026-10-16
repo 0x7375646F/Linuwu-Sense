@@ -2,9 +2,9 @@
 
 DKMS package for this repository: `linuwu-sense-an515-55-dkms`.
 
-Ships the **driver only** — the `linuwu_sense` module plus its systemd units,
-`modules-load.d` / `modprobe.d` / `sysusers.d` / `tmpfiles.d` drop-ins. The GUI,
-Turbo OSD and profile notifier are not part of this package.
+Ships the **driver only** — the `linuwu_sense` module plus its systemd units and
+`modules-load.d` / `modprobe.d` / `tmpfiles.d` drop-ins. The GUI, Turbo OSD and
+profile notifier are not part of this package.
 
 ## Files
 
@@ -12,7 +12,7 @@ Turbo OSD and profile notifier are not part of this package.
 | --- | --- |
 | `PKGBUILD` | Build recipe; installs the DKMS tree to `/usr/src/linuwu_sense-$pkgver` |
 | `.SRCINFO` | Generated metadata (`makepkg --printsrcinfo > .SRCINFO`) |
-| `linuwu-sense.install` | Adds/removes the module, prints the group hint |
+| `linuwu-sense.install` | Applies sysfs permissions and enables the units |
 | `linuwu-sense-setup.service` | Re-applies sysfs permissions after the module loads |
 
 ## Build and install
@@ -23,11 +23,21 @@ sudo pacman -S --needed base-devel dkms linux-headers
 makepkg -si
 ```
 
-Then join the group once (sysfs controls are group-owned by `linuwu_sense`):
+No further setup: the module is registered with DKMS (and rebuilds on kernel
+upgrades), loads at boot, and its controls are available to every user straight
+away.
 
-```bash
-sudo usermod -aG linuwu_sense "$USER"
-```
+## Permissions
+
+The driver is treated as a whole-machine fix, so the sysfs attributes it exposes
+are installed **world-writable** (`0666`) via `tmpfiles.d`. This deliberately
+skips the `linuwu_sense` group used by the manual `make install`, so all local
+users can adjust fan speed, RGB and the battery limiter with no `usermod`, no
+relogin, and no per-user setup.
+
+Trade-off: any local process can also write those files. That is accepted here
+because there is no per-user notion of "who owns the fans"; drop to `0660` with
+a group if you want to restrict it.
 
 ## Versioning
 

@@ -11,7 +11,7 @@
 
 pkgname=linuwu-sense-an515-55-dkms
 pkgver=25.701
-pkgrel=1
+pkgrel=2
 pkgdesc="Acer Nitro/Predator WMI driver (DKMS) with fan-speed fix and modern-kernel support"
 arch=('any')
 url="https://github.com/minervarr/linuwuSexo"
@@ -69,23 +69,24 @@ package() {
 
     install -Dm644 /dev/stdin "$pkgdir/usr/lib/modprobe.d/blacklist-acer_wmi.conf" <<< 'blacklist acer_wmi'
 
-    install -Dm644 /dev/stdin "$pkgdir/usr/lib/sysusers.d/linuwu_sense.conf" <<< 'g linuwu_sense - -'
-
     install -Dm644 "$srcdir/$srcdirname/LICENSE" \
         "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 
+    # World-writable on purpose: the driver is a whole-machine fix, so every
+    # local user should be able to drive fan/RGB/battery without a group or
+    # any post-install step. See aur/README.md for the trade-off.
     local base="/sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi"
     local nitro_fields="fan_speed battery_limiter battery_calibration usb_charging"
     local predator_fields="backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed lcd_override usb_charging"
     {
         for f in $nitro_fields; do
-            echo "m $base/nitro_sense/$f 0660 root linuwu_sense"
+            echo "m $base/nitro_sense/$f 0666 root root"
         done
         for f in $predator_fields; do
-            echo "m $base/predator_sense/$f 0660 root linuwu_sense"
+            echo "m $base/predator_sense/$f 0666 root root"
         done
         for z in four_zone_mode per_zone_mode; do
-            echo "m $base/four_zoned_kb/$z 0660 root linuwu_sense"
+            echo "m $base/four_zoned_kb/$z 0666 root root"
         done
     } | install -Dm644 /dev/stdin "$pkgdir/usr/lib/tmpfiles.d/linuwu_sense.conf"
 }
