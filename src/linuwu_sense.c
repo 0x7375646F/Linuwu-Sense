@@ -347,6 +347,7 @@ enum acer_wmi_predator_v4_oc {
  static bool cycle_gaming_thermal_profile = true;
  static bool predator_v4;
  static bool nitro_v4;
+ static bool experimental_ph315_predator_v4;
  static u64 supported_sensors;
  
  /* PH315-52 state tracking for features with non-standard return values */
@@ -361,8 +362,9 @@ enum acer_wmi_predator_v4_oc {
  module_param(force_caps, int, 0444);
  module_param(ec_raw_mode, bool, 0444);
  module_param(cycle_gaming_thermal_profile, bool, 0644);
-module_param(predator_v4, bool, 0444);
-module_param(nitro_v4, bool, 0444);
+ module_param(predator_v4, bool, 0444);
+ module_param(nitro_v4, bool, 0444);
+ module_param(experimental_ph315_predator_v4, bool, 0444);
  MODULE_PARM_DESC(mailled, "Set initial state of Mail LED");
  MODULE_PARM_DESC(brightness, "Set initial LCD backlight brightness");
  MODULE_PARM_DESC(threeg, "Set initial state of 3G hardware");
@@ -375,6 +377,10 @@ module_param(nitro_v4, bool, 0444);
      "Enable features for predator laptops that use predator sense v4");
  MODULE_PARM_DESC(nitro_v4,
     "Enable features for nitro laptops that use nitro sense v4");
+ MODULE_PARM_DESC(experimental_ph315_predator_v4,
+    "EXPERIMENTAL, PH315-52/53 only: also probe the predator_sense v4 interface "
+    "(platform_profile, fan_speed, battery limiter, etc.) alongside the turbo hotkey. "
+    "Untested on this hardware generation - the relevant WMI methods may simply not exist.");
  
  struct acer_data {
      int mailled;
@@ -433,7 +439,8 @@ module_param(nitro_v4, bool, 0444);
  };
  
  static struct quirk_entry *quirks;
- 
+ static struct platform_device *acer_platform_device;
+
  static void __init set_quirks(void)
  {
      if (quirks->mailled)
@@ -521,7 +528,22 @@ module_param(nitro_v4, bool, 0444);
      .cpu_fans = 1,
      .gpu_fans = 1,
  };
- 
+
+ /*
+  * EXPERIMENTAL: same as quirk_acer_predator_ph315_53, but also probes the
+  * newer predator_sense v4 (ACER_WMID_GET_GAMING_SYS_INFO-based) interface
+  * for platform_profile/fan_speed/battery limiter/etc. That interface has
+  * never been confirmed to exist on PH315-53/PH315-52 firmware; opt in with
+  * the experimental_ph315_predator_v4=1 module parameter to test it without
+  * losing turbo hotkey support if it turns out to be unsupported.
+  */
+ static struct quirk_entry quirk_acer_predator_ph315_53_experimental = {
+     .turbo = 1,
+     .cpu_fans = 1,
+     .gpu_fans = 1,
+     .predator_v4 = 1,
+ };
+
  static struct quirk_entry quirk_acer_predator_phn16_71 = {
      .predator_v4 = 1,
      .four_zone_kb = 1,
@@ -961,6 +983,15 @@ static struct quirk_entry quirk_acer_nitro = {
      },
      {
          .callback = dmi_matched,
+         .ident = "Acer Predator PH315-52",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH315-52"),
+         },
+         .driver_data = &quirk_acer_predator_ph315_53,
+     },
+     {
+         .callback = dmi_matched,
          .ident = "Acer Predator PHN16-71",
          .matches = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
@@ -1213,9 +1244,15 @@ static struct quirk_entry quirk_acer_nitro = {
      } else if (force_series == 2490) {
          quirks = &quirk_acer_travelmate_2490;
      }
- 
+
      if (quirks == NULL)
          quirks = &quirk_unknown;
+
+     if (experimental_ph315_predator_v4 && quirks == &quirk_acer_predator_ph315_53) {
+         pr_warn("experimental_ph315_predator_v4 enabled: probing the predator_sense v4 "
+             "interface on hardware it has never been confirmed to support\n");
+         quirks = &quirk_acer_predator_ph315_53_experimental;
+     }
  }
  
  /*
@@ -2366,18 +2403,25 @@ static struct quirk_entry quirk_acer_nitro = {
  static int acer_toggle_turbo(void)
  {
      u64 turbo_led_state;
- 
+     acpi_status status;
+
      /* Get current state from turbo button */
-     if (ACPI_FAILURE(WMID_gaming_get_u64(&turbo_led_state, ACER_CAP_TURBO_LED)))
+     status = WMID_gaming_get_u64(&turbo_led_state, ACER_CAP_TURBO_LED);
+     if (ACPI_FAILURE(status)) {
+         pr_err("Failed to read turbo LED state, ignoring hotkey press: %s\n",
+             acpi_format_exception(status));
          return -1;
- 
+     }
+
      if (turbo_led_state) {
          /* Turn off turbo led */
-         WMID_gaming_set_u64(0x1, ACER_CAP_TURBO_LED);
- 
+         status = WMID_gaming_set_u64(0x1, ACER_CAP_TURBO_LED);
+         if (ACPI_FAILURE(status))
+             pr_err("Failed to turn off turbo LED: %s\n", acpi_format_exception(status));
+
          /* Set FAN mode to auto */
          WMID_gaming_set_fan_mode(0x1);
- 
+
          /* Set OC to normal */
          if (has_cap(ACER_CAP_TURBO_OC)) {
              WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_OC_1,
@@ -2387,11 +2431,13 @@ static struct quirk_entry quirk_acer_nitro = {
          }
      } else {
          /* Turn on turbo led */
-         WMID_gaming_set_u64(0x10001, ACER_CAP_TURBO_LED);
- 
+         status = WMID_gaming_set_u64(0x10001, ACER_CAP_TURBO_LED);
+         if (ACPI_FAILURE(status))
+             pr_err("Failed to turn on turbo LED: %s\n", acpi_format_exception(status));
+
          /* Set FAN mode to turbo */
          WMID_gaming_set_fan_mode(0x2);
- 
+
          /* Set OC to turbo mode */
          if (has_cap(ACER_CAP_TURBO_OC)) {
              WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_OC_1,
@@ -2400,6 +2446,10 @@ static struct quirk_entry quirk_acer_nitro = {
                               ACER_WMID_OC_TURBO);
          }
      }
+
+     if (acer_platform_device)
+         sysfs_notify(&acer_platform_device->dev.kobj, "turbo_sense", "turbo_state");
+
      return turbo_led_state;
  }
  
@@ -3922,7 +3972,30 @@ static acpi_status __init
  static struct attribute_group nitro_sense_v4_attr_group = {
      .name = "nitro_sense", .attrs = predator_sense_attrs
  };
- 
+
+ /*
+  * turbo state (read-only). Userspace can poll(POLLPRI|POLLERR) on this
+  * file to be woken up on every turbo hotkey toggle instead of scraping
+  * dmesg; sysfs_notify() is called from acer_toggle_turbo().
+  */
+ static ssize_t turbo_state_show(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+     u64 turbo_led_state;
+
+     if (ACPI_FAILURE(WMID_gaming_get_u64(&turbo_led_state, ACER_CAP_TURBO_LED)))
+         return -EIO;
+
+     return sprintf(buf, "%d\n", turbo_led_state ? 1 : 0);
+ }
+ static struct device_attribute turbo_state = __ATTR(turbo_state, 0444, turbo_state_show, NULL);
+ static struct attribute *turbo_sense_attrs[] = {
+     &turbo_state.attr,
+     NULL
+ };
+ static struct attribute_group turbo_sense_attr_group = {
+     .name = "turbo_sense", .attrs = turbo_sense_attrs
+ };
+
  /* nitro sense attributes */
  static struct attribute *nitro_sense_attrs[] = {
      &fan_speed.attr,
@@ -4401,7 +4474,13 @@ static acpi_status __init
      err = acer_rfkill_init(&device->dev);
      if (err)
          goto error_rfkill;
- 
+
+     if (has_cap(ACER_CAP_TURBO_LED)) {
+         err = sysfs_create_group(&device->dev.kobj, &turbo_sense_attr_group);
+         if (err)
+             goto error_turbo_sense;
+     }
+
      if (has_cap(ACER_CAP_PLATFORM_PROFILE)) {
          err = acer_platform_profile_setup(device);
          if (err)
@@ -4461,6 +4540,8 @@ static acpi_status __init
      return err;
  error_predator_sense:
      return err;
+ error_turbo_sense:
+     return err;
  error_mailled:
      return err;
  }
@@ -4472,6 +4553,8 @@ static acpi_status __init
          acer_led_exit();
      if (has_cap(ACER_CAP_BRIGHTNESS))
          acer_backlight_exit();
+     if (has_cap(ACER_CAP_TURBO_LED))
+         sysfs_remove_group(&device->dev.kobj, &turbo_sense_attr_group);
      if (has_cap(ACER_CAP_PREDATOR_SENSE)) {
          /* Remove the appropriate attribute group */
          if (quirks->predator_legacy) {
@@ -4556,24 +4639,16 @@ static acpi_status __init
          set_u32(LED_OFF, ACER_CAP_MAILLED);
  }
  
-static int acer_platform_remove_compat(struct platform_device *device)
-{
-    acer_platform_remove(device);
-    return 0;
-}
+ static struct platform_driver acer_platform_driver = {
+     .driver = {
+         .name = "acer-wmi",
+         .pm = &acer_pm,
+     },
+     .probe = acer_platform_probe,
+     .remove = acer_platform_remove,
+     .shutdown = acer_platform_shutdown,
+ };
 
-static struct platform_driver acer_platform_driver = {
-    .driver = {
-        .name = "acer-wmi",
-        .pm = &acer_pm,
-    },
-    .probe = acer_platform_probe,
-    .remove = acer_platform_remove_compat,
-    .shutdown = acer_platform_shutdown,
-};
-
-static struct platform_device *acer_platform_device;
- 
  static void remove_debugfs(void)
  {
      debugfs_remove_recursive(interface->debug.root);

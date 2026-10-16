@@ -1,0 +1,12 @@
+[Unit]
+Description=Turbo mode OSD popup for linuwu_sense
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/share/linuwu-sense/linuwu_turbo_osd.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
