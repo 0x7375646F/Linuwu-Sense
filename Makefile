@@ -14,26 +14,10 @@ SRCDIR  := /usr/src/$(MODNAME)-$(PKGVER)
 all:
 	$(MAKE) --no-print-directory -f "$(KDIR)/Makefile" M="$(PWD)" modules
 
-	# --- auto sign block ---
-	# Check if keys exist before attempting to sign
-	@if [ -f "$(HOME)/module-signing/MOK.priv" ] && [ -f "$(HOME)/module-signing/MOK.der" ]; then \
-	if [ -x "/lib/modules/$(KVER)/build/scripts/sign-file" ]; then \
-	SIGN_TOOL="/lib/modules/$(KVER)/build/scripts/sign-file"; \
-	elif [ -x "/usr/src/linux-headers-$(KVER)/scripts/sign-file" ]; then \
-	SIGN_TOOL="/usr/src/linux-headers-$(KVER)/scripts/sign-file"; \
-	else \
-	echo "ERROR: sign-file tool not found, but MOK keys exist."; \
-	exit 1; \
-	fi; \
-	echo "Signing module linuwu_sense.ko using $$SIGN_TOOL"; \
-	sudo $$SIGN_TOOL sha256 \
-	"$(HOME)/module-signing/MOK.priv" \
-	"$(HOME)/module-signing/MOK.der" \
-	"$(PWD)/src/linuwu_sense.ko"; \
-	else \
-	echo "MOK keys not found in ~/module-signing/. Skipping module signing (Common for non-Secure Boot)."; \
-	fi
-	# --- end auto sign block ---
+# Module signing is handled by dkms-sign.sh, wired up as dkms.conf's
+# POST_BUILD hook. Keeping it out of this Makefile means signing also works
+# when DKMS builds as root (where SUDO_USER/HOME point at root, not the
+# person who owns the MOK keys).
 
 clean:
 	$(MAKE) --no-print-directory -f "$(KDIR)/Makefile" M="$(PWD)" clean

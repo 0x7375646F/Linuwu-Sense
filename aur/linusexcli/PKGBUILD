@@ -1,0 +1,35 @@
+# Maintainer: minervarr <216406341+minervarr@users.noreply.github.com>
+#
+# Standalone CLI for the Linuwu-Sense driver, packaged independently from the
+# DKMS module (aur/linuwu-sense-an515-55-dkms). Install either one, or both:
+# this package never pulls in dkms, and the module package never pulls in the
+# CLI. They only meet at runtime (the CLI talks to the driver's sysfs files),
+# which is expressed as an optdepends below.
+#
+# The tool is a standard-library-only zipapp built from the repo's own
+# cli/build.pyz.sh, so Python is the only runtime dependency and there is no
+# Python build stack (uv, python-build, python-installer) in makedepends.
+
+pkgname=linusexcli
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="CLI to control the Linuwu-Sense Acer Predator/Nitro driver (fans, RGB, battery, thermal)"
+arch=('any')
+url="https://github.com/minervarr/linuwuSexo"
+license=('GPL')
+depends=('python')
+makedepends=('git')
+optdepends=('linuwu-sense-an515-55-dkms: the kernel module this tool drives')
+options=('!strip')
+
+_gitrepo="https://github.com/minervarr/linuwuSexo.git"
+source=("git+${_gitrepo}#tag=v${pkgver}")
+sha256sums=('SKIP')
+
+package() {
+    # Build the single-file zipapp with the project's own builder and install
+    # it as /usr/bin/linusexcli. build.pyz.sh cd's to its own directory, so the
+    # output path must be absolute.
+    install -d "$pkgdir/usr/bin"
+    bash "$srcdir/linuwuSexo/cli/build.pyz.sh" "$pkgdir/usr/bin/linusexcli"
+}
