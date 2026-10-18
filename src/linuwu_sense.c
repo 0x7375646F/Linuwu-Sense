@@ -617,6 +617,12 @@ static struct quirk_entry quirk_acer_nitro_anv16_71 = {
     .turbo = 1,
 };
 
+ static struct quirk_entry quirk_acer_nitro_an515_44 = {
+    .nitro_sense = 2,
+    .four_zone_kb = 1,
+    .an515_58_rgb_fix = 1,
+ };
+
  static struct quirk_entry quirk_acer_nitro_an515_45 = {
     .nitro_sense = 2,
     .four_zone_kb = 1,
@@ -878,6 +884,15 @@ static struct quirk_entry quirk_acer_nitro = {
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-54"),
          },
          .driver_data = &quirk_acer_nitro_an515_54,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Nitro AN515-44",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-44"),
+         },
+         .driver_data = &quirk_acer_nitro_an515_44,
      },
      {
          .callback = dmi_matched,
