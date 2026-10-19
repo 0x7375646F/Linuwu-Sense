@@ -15,6 +15,7 @@
  #include <linux/device.h>
  #include <linux/kernel.h>
  #include <linux/module.h>
+ #include <linux/mutex.h>
  #include <linux/init.h>
  #include <linux/types.h>
  #include <linux/dmi.h>
@@ -40,6 +41,7 @@
  #include <linux/hid.h>
  #include <linux/power_supply.h>
  #include <linux/string.h>
+ #include <linux/io.h>
  
  MODULE_AUTHOR("Carlos Corbacho");
  MODULE_DESCRIPTION("Acer Laptop WMI Extras Driver");
@@ -444,6 +446,7 @@ enum acer_wmi_predator_v4_oc {
      u8 phn14_sensors; /* PHN14-51 specific sensors */
      u8 nitro_hid_kb;
      u8 an515_58_rgb_fix;
+     u8 ec_mmio_profile;
      u8 kb_zone_arm;
  };
  
@@ -688,6 +691,11 @@ static struct quirk_entry quirk_acer_nitro = {
     .nitro_v4 = 1,
  };
 
+ static struct quirk_entry quirk_acer_nitro_anv15_52 = {
+     .nitro_v4 = 1,
+     .ec_mmio_profile = 1,
+ };
+
  /* The Aspire One has a dummy ACPI-WMI interface - disable it */
  static const struct dmi_system_id acer_blacklist[] __initconst = {
      {
@@ -867,7 +875,7 @@ static struct quirk_entry quirk_acer_nitro = {
              DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV15-52"),
          },
-         .driver_data = &quirk_acer_nitro,
+         .driver_data = &quirk_acer_nitro_anv15_52,
      },
      {
          .callback = dmi_matched,
@@ -2520,13 +2528,190 @@ static struct quirk_entry quirk_acer_nitro = {
      return turbo_led_state;
  }
  
+ #define ANV15_EC_WINDOW_BASE	0xFE708000
+ #define ANV15_EC_WINDOW_SIZE	0x1000
+ #define ANV15_EC_PROFILE_MODE_OFFSET	0x607
+ #define ANV15_EC0_Q30_PATH	"\\_SB.PC00.LPCB.EC0._Q30"
+
+ static void __iomem *anv15_ec_window;
+ static acpi_handle anv15_ec0_q30_handle;
+ static bool anv15_ec_profile_available;
+ static u8 anv15_ec_profile_mode = 2;
+ static DEFINE_MUTEX(anv15_ec_profile_lock);
+ static enum platform_profile_option anv15_ec_last_non_turbo_profile = PLATFORM_PROFILE_BALANCED;
+
+ static const enum platform_profile_option anv15_ec_mode_to_profile[] = {
+     PLATFORM_PROFILE_PERFORMANCE,		/* 0: max performance */
+     PLATFORM_PROFILE_BALANCED_PERFORMANCE,	/* 1: performance */
+     PLATFORM_PROFILE_BALANCED,		/* 2: balanced */
+     PLATFORM_PROFILE_QUIET,			/* 3: quiet */
+     PLATFORM_PROFILE_LOW_POWER,		/* 4: eco */
+ };
+
+ /*
+  * The saved-state file and the WMI paths use the predator_v4 thermal profile
+  * enum, not EC mode indices; translate explicitly at this boundary.
+  */
+ static int anv15_ec_profile_to_predator_tp(enum platform_profile_option profile)
+ {
+     switch (profile) {
+     case PLATFORM_PROFILE_PERFORMANCE:
+         return ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO;
+     case PLATFORM_PROFILE_BALANCED_PERFORMANCE:
+         return ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE;
+     case PLATFORM_PROFILE_BALANCED:
+         return ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED;
+     case PLATFORM_PROFILE_QUIET:
+         return ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET;
+     case PLATFORM_PROFILE_LOW_POWER:
+         return ACER_PREDATOR_V4_THERMAL_PROFILE_ECO;
+     default:
+         return -EOPNOTSUPP;
+     }
+ }
+
+ static int anv15_ec_profile_from_predator_tp(int tp)
+ {
+     switch (tp) {
+     case ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO:
+         return PLATFORM_PROFILE_PERFORMANCE;
+     case ACER_PREDATOR_V4_THERMAL_PROFILE_PERFORMANCE:
+         return PLATFORM_PROFILE_BALANCED_PERFORMANCE;
+     case ACER_PREDATOR_V4_THERMAL_PROFILE_BALANCED:
+         return PLATFORM_PROFILE_BALANCED;
+     case ACER_PREDATOR_V4_THERMAL_PROFILE_QUIET:
+         return PLATFORM_PROFILE_QUIET;
+     case ACER_PREDATOR_V4_THERMAL_PROFILE_ECO:
+         return PLATFORM_PROFILE_LOW_POWER;
+     default:
+         return -EOPNOTSUPP;
+     }
+ }
+
+ static int anv15_ec_profile_init(void)
+ {
+     acpi_status status;
+
+     anv15_ec_window = memremap(ANV15_EC_WINDOW_BASE, ANV15_EC_WINDOW_SIZE,
+                                MEMREMAP_WB);
+     if (!anv15_ec_window) {
+         pr_warn("EC profile: failed to map EC shared-memory window\n");
+         return -ENOMEM;
+     }
+
+     status = acpi_get_handle(NULL, ANV15_EC0_Q30_PATH, &anv15_ec0_q30_handle);
+     if (ACPI_FAILURE(status)) {
+         pr_warn("EC profile: EC0._Q30 handler not found\n");
+         memunmap(anv15_ec_window);
+         anv15_ec_window = NULL;
+         return -ENODEV;
+     }
+
+     mutex_lock(&anv15_ec_profile_lock);
+     anv15_ec_profile_available = true;
+     mutex_unlock(&anv15_ec_profile_lock);
+
+     pr_info("EC profile: EC thermal profile interface available\n");
+     return 0;
+ }
+
+ static void anv15_ec_profile_exit(void)
+ {
+     mutex_lock(&anv15_ec_profile_lock);
+     anv15_ec_profile_available = false;
+     if (anv15_ec_window) {
+         memunmap(anv15_ec_window);
+         anv15_ec_window = NULL;
+     }
+     mutex_unlock(&anv15_ec_profile_lock);
+ }
+
+ static int anv15_ec_profile_get_locked(enum platform_profile_option *profile)
+ {
+     if (!anv15_ec_profile_available)
+         return -ENODEV;
+
+     if (anv15_ec_profile_mode >= ARRAY_SIZE(anv15_ec_mode_to_profile))
+         return -EIO;
+
+     *profile = anv15_ec_mode_to_profile[anv15_ec_profile_mode];
+     return 0;
+ }
+
+ static int anv15_ec_profile_get(enum platform_profile_option *profile)
+ {
+     int err;
+
+     mutex_lock(&anv15_ec_profile_lock);
+     err = anv15_ec_profile_get_locked(profile);
+     mutex_unlock(&anv15_ec_profile_lock);
+
+     return err;
+ }
+
+ static int anv15_ec_profile_set_locked(enum platform_profile_option profile)
+ {
+     acpi_status status;
+     u8 mode;
+
+     if (!anv15_ec_profile_available)
+         return -ENODEV;
+
+     switch (profile) {
+     case PLATFORM_PROFILE_PERFORMANCE:
+         mode = 0;
+         break;
+     case PLATFORM_PROFILE_BALANCED_PERFORMANCE:
+         mode = 1;
+         break;
+     case PLATFORM_PROFILE_BALANCED:
+         mode = 2;
+         break;
+     case PLATFORM_PROFILE_QUIET:
+         mode = 3;
+         break;
+     case PLATFORM_PROFILE_LOW_POWER:
+         mode = 4;
+         break;
+     default:
+         return -EOPNOTSUPP;
+     }
+
+     writeb(mode, anv15_ec_window + ANV15_EC_PROFILE_MODE_OFFSET);
+     status = acpi_evaluate_object(anv15_ec0_q30_handle, NULL, NULL, NULL);
+     if (ACPI_FAILURE(status)) {
+         pr_warn("EC profile: failed to apply thermal mode %u: %s\n",
+                 mode, acpi_format_exception(status));
+         return -EIO;
+     }
+
+     anv15_ec_profile_mode = mode;
+     if (profile != PLATFORM_PROFILE_PERFORMANCE)
+         anv15_ec_last_non_turbo_profile = profile;
+     return 0;
+ }
+
+ static int anv15_ec_profile_set(enum platform_profile_option profile)
+ {
+     int err;
+
+     mutex_lock(&anv15_ec_profile_lock);
+     err = anv15_ec_profile_set_locked(profile);
+     mutex_unlock(&anv15_ec_profile_lock);
+
+     return err;
+ }
+
  static int
  acer_predator_v4_platform_profile_get(struct device *dev,
                        enum platform_profile_option *profile)
  {
      u8 tp;
      int err;
- 
+
+     if (quirks->ec_mmio_profile)
+         return anv15_ec_profile_get(profile);
+
      err = WMID_gaming_get_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, &tp);
      if (err)
          return err;
@@ -2579,6 +2764,9 @@ static struct quirk_entry quirk_acer_nitro = {
          }
      }
  
+     if (quirks->ec_mmio_profile)
+         return anv15_ec_profile_set(profile);
+
      switch (profile) {
      case PLATFORM_PROFILE_PERFORMANCE:
          tp = ACER_PREDATOR_V4_THERMAL_PROFILE_TURBO;
@@ -2614,7 +2802,19 @@ static struct quirk_entry quirk_acer_nitro = {
  {
      unsigned long supported_profiles;
      int err;
- 
+
+     if (quirks->ec_mmio_profile) {
+         if (!anv15_ec_profile_available)
+             return -ENODEV;
+
+				 set_bit(PLATFORM_PROFILE_LOW_POWER, choices);
+				 set_bit(PLATFORM_PROFILE_QUIET, choices);
+				 set_bit(PLATFORM_PROFILE_BALANCED, choices);
+				 set_bit(PLATFORM_PROFILE_BALANCED_PERFORMANCE, choices);
+				 set_bit(PLATFORM_PROFILE_PERFORMANCE, choices);
+				 return 0;
+		 }
+
      err = WMID_gaming_get_misc_setting(ACER_WMID_MISC_SETTING_SUPPORTED_PROFILES,
                         (u8 *)&supported_profiles);
      if (err)
@@ -2714,6 +2914,64 @@ static struct quirk_entry quirk_acer_nitro = {
          u8 current_tp;
          int tp, err;
          int on_AC;
+
+         if (quirks->ec_mmio_profile) {
+             enum platform_profile_option cur_profile, next_profile;
+
+             on_AC = acer_is_on_ac_power();
+             if (on_AC < 0)
+                 return on_AC;
+
+             mutex_lock(&anv15_ec_profile_lock);
+             err = anv15_ec_profile_get_locked(&cur_profile);
+             if (err) {
+                 mutex_unlock(&anv15_ec_profile_lock);
+                 return err;
+             }
+             if (!on_AC) {
+                 next_profile = cur_profile == PLATFORM_PROFILE_LOW_POWER
+                     ? PLATFORM_PROFILE_BALANCED
+                     : PLATFORM_PROFILE_LOW_POWER;
+             } else if (cycle_gaming_thermal_profile) {
+                 switch (cur_profile) {
+                 case PLATFORM_PROFILE_LOW_POWER:
+                 case PLATFORM_PROFILE_PERFORMANCE:
+                     next_profile = PLATFORM_PROFILE_QUIET;
+                     break;
+                 case PLATFORM_PROFILE_QUIET:
+                     next_profile = PLATFORM_PROFILE_BALANCED;
+                     break;
+                 case PLATFORM_PROFILE_BALANCED:
+                     next_profile = PLATFORM_PROFILE_BALANCED_PERFORMANCE;
+                     break;
+                 default:
+                     next_profile = PLATFORM_PROFILE_PERFORMANCE;
+                     break;
+                 }
+             } else {
+                 next_profile = cur_profile == PLATFORM_PROFILE_PERFORMANCE
+                     ? anv15_ec_last_non_turbo_profile
+                     : PLATFORM_PROFILE_PERFORMANCE;
+             }
+
+             err = anv15_ec_profile_set_locked(next_profile);
+             mutex_unlock(&anv15_ec_profile_lock);
+             if (err)
+                 return err;
+
+             if(next_profile == PLATFORM_PROFILE_QUIET || next_profile == PLATFORM_PROFILE_LOW_POWER) {
+                 acpi_status stat = acer_set_fan_speed(0,0);
+                 if(ACPI_FAILURE(stat)){
+                     return -EIO;
+                 }
+             }
+
+             if (platform_profile_device)
+                 platform_profile_notify(platform_profile_device);
+
+             return 0;
+         }
+
          err = WMID_gaming_get_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, &current_tp);
          if (err)
              return err;
@@ -3723,6 +3981,21 @@ static acpi_status __init
  static int acer_predator_state_update(int value){
      u8 current_tp;
      int tp, err;
+
+     if (quirks->ec_mmio_profile) {
+         enum platform_profile_option profile;
+
+         err = anv15_ec_profile_get(&profile);
+         if (err)
+             return err;
+
+         tp = anv15_ec_profile_to_predator_tp(profile);
+         if (tp < 0)
+             return tp;
+
+         goto store;
+     }
+
      err = WMID_gaming_get_misc_setting(
         ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, 
         &current_tp);
@@ -3747,6 +4020,7 @@ static acpi_status __init
          default:
              return -1;
      }
+     store:
      /* When AC is connected */
      if(value == 1){
          current_states.ac_state.thermal_profile = tp;
@@ -3765,8 +4039,21 @@ static acpi_status __init
  }
  
  static acpi_status acer_predator_state_restore(int value){
-     int err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE, 
+     int err;
+
+     if (quirks->ec_mmio_profile) {
+         int tp = value == 0 ? current_states.battery_state.thermal_profile
+                             : current_states.ac_state.thermal_profile;
+         int profile = anv15_ec_profile_from_predator_tp(tp);
+
+         if (profile < 0)
+             return profile;
+
+         err = anv15_ec_profile_set(profile);
+     } else {
+         err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_PLATFORM_PROFILE,
                                         value == 0 ? current_states.battery_state.thermal_profile : current_states.ac_state.thermal_profile);
+     }
      if (err)
          return err;
  
@@ -5313,6 +5600,9 @@ static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
              pr_warn("Cannot enable accelerometer\n");
      }
  
+     if (quirks->ec_mmio_profile)
+         anv15_ec_profile_init();
+
      err = platform_driver_register(&acer_platform_driver);
      if (err) {
          pr_err("Unable to register platform driver\n");
@@ -5351,6 +5641,8 @@ static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
          acer_wmi_input_destroy();
      if (acer_wmi_accel_dev)
          input_unregister_device(acer_wmi_accel_dev);
+     if (quirks->ec_mmio_profile)
+         anv15_ec_profile_exit();
  
      return err;
  }
@@ -5367,6 +5659,7 @@ static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
      remove_debugfs();
      platform_device_unregister(acer_platform_device);
      platform_driver_unregister(&acer_platform_driver);
+     anv15_ec_profile_exit();
 
      pr_info("Acer Laptop WMI Extras unloaded\n");
  }
