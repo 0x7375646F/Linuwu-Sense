@@ -444,6 +444,7 @@ enum acer_wmi_predator_v4_oc {
      u8 phn14_sensors; /* PHN14-51 specific sensors */
      u8 nitro_hid_kb;
      u8 an515_58_rgb_fix;
+     u8 kb_zone_arm;
  };
  
  static struct quirk_entry *quirks;
@@ -519,6 +520,7 @@ enum acer_wmi_predator_v4_oc {
      .gpu_fans = 1,
      .predator_v4 = 1,      /* PR #121 (newer) chose v1; PR #98 had proposed v2 (PredatorSense v3, no platform_profile) */
      .four_zone_kb = 1,     /* retained from PR #98 */
+     .kb_zone_arm = 1,      /* arm the four LED zones at probe (this model needs it) */
  };
 
  static struct quirk_entry quirk_acer_predator_ph315_54 = {
@@ -4234,7 +4236,29 @@ static acpi_status __init
                                 &input, NULL);
  }
  
- static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
+ /*
+ * Some four-zone models (e.g. PH315-53) keep the keyboard LED zones disabled
+ * until the gaming system info has been polled and all four zones are switched
+ * on via SET_GAMING_LED. Per-zone colours written afterwards are stored by the
+ * EC but never displayed. The facer / acer-predator-turbo RGB module runs
+ * exactly this sequence once at probe (gaming_kbbl_poll_and_enable_zones).
+ */
+static void gaming_kb_arm_zones(void)
+{
+    acpi_status status;
+
+    status = WMI_gaming_execute_u64(ACER_WMID_GET_GAMING_SYS_INFO_METHODID, 0, NULL);
+    if (ACPI_FAILURE(status))
+        pr_err("Error polling gaming system info: %s\n", acpi_format_exception(status));
+
+    status = WMI_gaming_execute_u64(ACER_WMID_SET_GAMING_LED_METHODID,
+                                    ACER_GAMING_KBL_SET_ON | ACER_GAMING_KBL_SET_ALL_ZONES,
+                                    NULL);
+    if (ACPI_FAILURE(status))
+        pr_err("Error enabling four-zone keyboard LEDs: %s\n", acpi_format_exception(status));
+}
+
+static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
      u64 in = 1;
      acpi_status status;
      union acpi_object *obj;
@@ -4802,6 +4826,8 @@ static acpi_status __init
          err = sysfs_create_group(&device->dev.kobj, &four_zoned_kb_attr_group);
          if (err)
              goto error_four_zone;
+         if (quirks->kb_zone_arm)
+             gaming_kb_arm_zones();
          four_zone_kb_state_load();
      }
  
