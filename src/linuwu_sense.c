@@ -603,10 +603,6 @@ enum acer_wmi_predator_v4_oc {
      .four_zone_kb = 1,
  };
 
- static struct quirk_entry quirk_acer_nitro_legacy = {
-     .nitro_sense = 2,
- };
-
  static struct quirk_entry quirk_acer_nitro_an515_57 = {
     .nitro_v4 = 1,
  };
@@ -631,9 +627,10 @@ static struct quirk_entry quirk_acer_nitro_anv16_71 = {
  };
 
  /*
-  * AN515-55 uses the legacy nitro_sense interface. Its per-zone RGB needs the
-  * same byte-layout workaround as the AN515-58 (see set_per_zone_color); port
-  * of @fabiannabil1's fix via the AN515-55 fork.
+  * AN515-55 uses the nitro_sense (v1) interface, i.e. platform_profile plus
+  * fan-speed read. Its per-zone RGB needs the same byte-layout workaround as
+  * the AN515-58 (see set_per_zone_color); port of @fabiannabil1's fix via the
+  * AN515-55 fork.
   */
  static struct quirk_entry quirk_acer_nitro_an515_55 = {
     .nitro_sense = 1,
@@ -862,15 +859,6 @@ static struct quirk_entry quirk_acer_nitro = {
              DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV15-52"),
          },
          .driver_data = &quirk_acer_nitro,
-     },
-     {
-         .callback = dmi_matched,
-         .ident = "Acer Nitro AN515-55",
-         .matches = {
-             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
-             DMI_MATCH(DMI_PRODUCT_NAME, "Nitro AN515-55"),
-         },
-         .driver_data = &quirk_acer_nitro_legacy,
      },
      {
          .callback = dmi_matched,

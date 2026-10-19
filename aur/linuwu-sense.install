@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# The sysfs controls in /usr/lib/tmpfiles.d/linuwu_sense.conf are world-writable
+# (0666), so every local user can drive the driver without a group or any
+# post-install step. linuwu-sense-setup.service re-applies them once the module
+# has loaded.
+_sense_configure() {
+    systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuwu_sense.conf >/dev/null 2>&1 || true
+
+    systemctl enable linuwu_sense.service >/dev/null 2>&1 || true
+    systemctl enable linuwu-sense-setup.service >/dev/null 2>&1 || true
+}
+
+post_install() {
+    _sense_configure
+}
+
+post_upgrade() {
+    _sense_configure
+}
+
+pre_remove() {
+    systemctl disable linuwu_sense.service >/dev/null 2>&1 || true
+    systemctl disable linuwu-sense-setup.service >/dev/null 2>&1 || true
+    rmmod linuwu_sense 2>/dev/null || true
+    # Our modprobe blacklist is going away, so bring the in-kernel driver back.
+    modprobe acer_wmi 2>/dev/null || true
+}

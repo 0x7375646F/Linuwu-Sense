@@ -37,3 +37,18 @@ Thumbs.db
 .vscode/
 .idea/
 *.iml
+
+# Static analysis / compiler intermediates (sparse, clang)
+*.ll
+*.i
+*.s
+*.bc
+.cache/
+
+# Compressed modules
+*.ko.zst
+*.ko.xz
+
+# Python
+__pycache__/
+*.pyc

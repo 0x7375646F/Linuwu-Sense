@@ -1,0 +1,92 @@
+# Maintainer: minervarr <216406341+minervarr@users.noreply.github.com>
+#
+# Patched fork of Linuwu-Sense for Acer Nitro/Predator laptops, packaged as a
+# DKMS module. Ships the driver only: the GUI, Turbo OSD popup and profile
+# notifier live in the upstream source tree and are intentionally not packaged
+# here.
+#
+# The DKMS source tree is installed to /usr/src/linuwu_sense-$pkgver, which
+# must match dkms.conf's PACKAGE_NAME/PACKAGE_VERSION. dkms.conf is patched to
+# $pkgver below so the two can never drift apart.
+
+pkgname=linuwu-sense-an515-55-dkms
+pkgver=25.701
+pkgrel=2
+pkgdesc="Acer Nitro/Predator WMI driver (DKMS) with fan-speed fix and modern-kernel support"
+arch=('any')
+url="https://github.com/minervarr/linuwuSexo"
+license=('GPL')
+depends=('dkms')
+optdepends=('linux-headers: build for the standard kernel'
+            'linux-lts-headers: build for the LTS kernel'
+            'linux-zen-headers: build for the zen kernel'
+            'linux-cachyos-headers: build for the CachyOS kernel'
+            'gcc: build with gcc'
+            'clang: build with clang/LLVM (needed if the kernel was built with clang)')
+makedepends=('git')
+conflicts=('linuwu-sense-dkms')
+install=linuwu-sense.install
+
+_gitrepo="https://github.com/minervarr/linuwuSexo.git"
+source=("git+${_gitrepo}#tag=v${pkgver}"
+        "linuwu-sense-setup.service")
+sha256sums=('SKIP'
+            '2846ae5165408f3681092740c6d00f014343f0d757b2bdc605f1e066eed7ee62')
+
+package() {
+    local srcdirname="linuwuSexo"
+    local dkms_src="$pkgdir/usr/src/linuwu_sense-$pkgver"
+
+    # Only what DKMS needs: the rest of the tree (GUI, OSD, docs) is not part
+    # of this package.
+    install -d "$dkms_src"
+    cp -r "$srcdir/$srcdirname/dkms.conf" \
+          "$srcdir/$srcdirname/dkms-sign.sh" \
+          "$srcdir/$srcdirname/Makefile" \
+          "$srcdir/$srcdirname/src" \
+          "$srcdir/$srcdirname/LICENSE" \
+          "$dkms_src/"
+
+    # dkms-sign.sh is dkms.conf's POST_BUILD hook and must stay executable.
+    chmod 0755 "$dkms_src/dkms-sign.sh"
+
+    # Keep the DKMS tree name and dkms.conf in lockstep with this package.
+    sed -i "s/^PACKAGE_VERSION=.*/PACKAGE_VERSION=\"$pkgver\"/" "$dkms_src/dkms.conf"
+
+    # Drop any build artifacts that snuck into the working tree.
+    find "$dkms_src/src" -maxdepth 1 \
+        \( -name '*.o' -o -name '*.ko' -o -name '*.mod*' -o -name '*.cmd' \
+           -o -name 'Module.symvers' -o -name 'modules.order' \) -delete
+    rm -f "$dkms_src/.cache.mk"
+
+    install -Dm644 "$srcdir/$srcdirname/linuwu_sense.service" \
+        "$pkgdir/usr/lib/systemd/system/linuwu_sense.service"
+
+    install -Dm644 "$srcdir/linuwu-sense-setup.service" \
+        "$pkgdir/usr/lib/systemd/system/linuwu-sense-setup.service"
+
+    install -Dm644 /dev/stdin "$pkgdir/usr/lib/modules-load.d/linuwu_sense.conf" <<< 'linuwu_sense'
+
+    install -Dm644 /dev/stdin "$pkgdir/usr/lib/modprobe.d/blacklist-acer_wmi.conf" <<< 'blacklist acer_wmi'
+
+    install -Dm644 "$srcdir/$srcdirname/LICENSE" \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    # World-writable on purpose: the driver is a whole-machine fix, so every
+    # local user should be able to drive fan/RGB/battery without a group or
+    # any post-install step. See aur/README.md for the trade-off.
+    local base="/sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi"
+    local nitro_fields="fan_speed battery_limiter battery_calibration usb_charging"
+    local predator_fields="backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed lcd_override usb_charging"
+    {
+        for f in $nitro_fields; do
+            echo "m $base/nitro_sense/$f 0666 root root"
+        done
+        for f in $predator_fields; do
+            echo "m $base/predator_sense/$f 0666 root root"
+        done
+        for z in four_zone_mode per_zone_mode; do
+            echo "m $base/four_zoned_kb/$z 0666 root root"
+        done
+    } | install -Dm644 /dev/stdin "$pkgdir/usr/lib/tmpfiles.d/linuwu_sense.conf"
+}

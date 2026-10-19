@@ -1,0 +1,15 @@
+pkgbase = linusexcli
+	pkgdesc = CLI to control the Linuwu-Sense Acer Predator/Nitro driver (fans, RGB, battery, thermal)
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/minervarr/linuwuSexo
+	arch = any
+	license = GPL
+	makedepends = git
+	depends = python
+	optdepends = linuwu-sense-an515-55-dkms: the kernel module this tool drives
+	options = !strip
+	source = git+https://github.com/minervarr/linuwuSexo.git#tag=v0.1.0
+	sha256sums = SKIP
+
+pkgname = linusexcli
