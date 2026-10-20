@@ -850,6 +850,16 @@ static struct quirk_entry quirk_acer_nitro = {
         },
         .driver_data = &quirk_acer_nitro_anv16_71,
     },
+    {
+        /* Same EC thermal interface as ANV15-52: EC0.TUGM (0xFE708607) + EC0._Q30 */
+        .callback = dmi_matched,
+        .ident = "Acer Nitro ANV16-72",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV16-72"),
+        },
+        .driver_data = &quirk_acer_nitro_anv15_52,
+    },
      {
          .callback = dmi_matched,
          .ident = "Acer Nitro ANV15-41",
@@ -2591,9 +2601,10 @@ static struct quirk_entry quirk_acer_nitro = {
  static int anv15_ec_profile_init(void)
  {
      acpi_status status;
+     u8 cur_mode;
 
-     anv15_ec_window = memremap(ANV15_EC_WINDOW_BASE, ANV15_EC_WINDOW_SIZE,
-                                MEMREMAP_WB);
+     /* EC shared memory is MMIO: map it uncached so writes reach the EC before _Q30 */
+     anv15_ec_window = ioremap(ANV15_EC_WINDOW_BASE, ANV15_EC_WINDOW_SIZE);
      if (!anv15_ec_window) {
          pr_warn("EC profile: failed to map EC shared-memory window\n");
          return -ENOMEM;
@@ -2602,16 +2613,21 @@ static struct quirk_entry quirk_acer_nitro = {
      status = acpi_get_handle(NULL, ANV15_EC0_Q30_PATH, &anv15_ec0_q30_handle);
      if (ACPI_FAILURE(status)) {
          pr_warn("EC profile: EC0._Q30 handler not found\n");
-         memunmap(anv15_ec_window);
+         iounmap(anv15_ec_window);
          anv15_ec_window = NULL;
          return -ENODEV;
      }
 
+     /* Start from the mode the firmware is actually in rather than assuming balanced */
+     cur_mode = readb(anv15_ec_window + ANV15_EC_PROFILE_MODE_OFFSET);
+
      mutex_lock(&anv15_ec_profile_lock);
+     if (cur_mode < ARRAY_SIZE(anv15_ec_mode_to_profile))
+         anv15_ec_profile_mode = cur_mode;
      anv15_ec_profile_available = true;
      mutex_unlock(&anv15_ec_profile_lock);
 
-     pr_info("EC profile: EC thermal profile interface available\n");
+     pr_info("EC profile: EC thermal profile interface available (current mode %u)\n", cur_mode);
      return 0;
  }
 
@@ -2620,7 +2636,7 @@ static struct quirk_entry quirk_acer_nitro = {
      mutex_lock(&anv15_ec_profile_lock);
      anv15_ec_profile_available = false;
      if (anv15_ec_window) {
-         memunmap(anv15_ec_window);
+         iounmap(anv15_ec_window);
          anv15_ec_window = NULL;
      }
      mutex_unlock(&anv15_ec_profile_lock);
