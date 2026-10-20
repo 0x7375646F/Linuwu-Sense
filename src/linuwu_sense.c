@@ -587,7 +587,7 @@ enum acer_wmi_predator_v4_oc {
 
  static struct quirk_entry quirk_acer_nitro_anv16_41 = {
     .nitro_v4 = 1,
-    .four_zone_kb = 1,
+    .four_zone_kb = 0,
  };
 
  static struct quirk_entry quirk_acer_nitro_anv16s_41 = {
