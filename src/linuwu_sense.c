@@ -850,6 +850,16 @@ static struct quirk_entry quirk_acer_nitro = {
         },
         .driver_data = &quirk_acer_nitro_anv16_71,
     },
+    {
+        /* Same EC thermal interface as ANV15-52: EC0.TUGM (0xFE708607) + EC0._Q30 */
+        .callback = dmi_matched,
+        .ident = "Acer Nitro ANV16-72",
+        .matches = {
+            DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+            DMI_MATCH(DMI_PRODUCT_NAME, "Nitro ANV16-72"),
+        },
+        .driver_data = &quirk_acer_nitro_anv15_52,
+    },
      {
          .callback = dmi_matched,
          .ident = "Acer Nitro ANV15-41",
