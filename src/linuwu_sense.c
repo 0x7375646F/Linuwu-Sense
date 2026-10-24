@@ -4456,7 +4456,8 @@ static acpi_status __init
      u8 gmReturn;
      u8 gmOutput[15];
  } __packed;
- 
+
+static void commit_static_kb_zones(u8 red, u8 green, u8 blue);
  static acpi_status set_kb_status(int mode, int speed, int brightness,
                                   int direction, int red, int green, int blue){
      /* Use HID path on models where WMI silently ignores RGB commands */
@@ -4518,8 +4519,12 @@ static acpi_status __init
      }
 
      kfree(obj);
-     return status;
- }
+
+if (mode == 0 || mode == 8)
+    commit_static_kb_zones((u8)red, (u8)green, (u8)blue);
+
+    return status;
+}
  
  /*
   * AN515-58/55: re-apply a plain static (single-colour) mode after the
@@ -4558,6 +4563,19 @@ static void gaming_kb_arm_zones(void)
                                     NULL);
     if (ACPI_FAILURE(status))
         pr_err("Error enabling four-zone keyboard LEDs: %s\n", acpi_format_exception(status));
+}
+
+static void commit_static_kb_zones(u8 red, u8 green, u8 blue)
+{
+    u8 zone_ids[4] = { 0x1, 0x2, 0x4, 0x8 };
+    u64 color = ((u64)red << 16) | ((u64)green << 8) | (u64)blue;
+    int zi;
+
+    gaming_kb_arm_zones();
+    for (zi = 0; zi < 4; zi++) {
+        u64 payload = (cpu_to_be64(color) >> 32) | zone_ids[zi];
+        WMI_gaming_execute_u64(ACER_WMID_SET_GAMING_RGB_KB_METHODID, payload, NULL);
+    }
 }
 
 static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
