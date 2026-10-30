@@ -21,6 +21,7 @@ Inspired by [acer-predator-turbo](https://github.com/JafarAkhondali/acer-predato
   - [LCD Override](#6-lcd-override-️)
   - [USB Charging](#7-usb-charging-)
   - [Turbo State & OSD Popup](#8-turbo-state-)
+  - [GPU Mode](#9-gpu-mode-)
 - [Keyboard Configuration](#-keyboard-configuration)
 - [GUI Frontends](#gui)
 - [Troubleshooting](#-troubleshooting)
@@ -249,6 +250,24 @@ systemctl --user start linuwu-turbo-osd.service
 To try the popup directly without the service:
 ```bash
 python3 osd/linuwu_turbo_osd.py
+```
+
+### **9. GPU Mode 🎮**
+
+Switches the GPU MUX on laptops that have one (NitroSense's "GPU Operating"). The new mode applies after a reboot. The file only exists when the firmware reports a GPU mode.
+
+| Value | Meaning |
+|---|---|
+| `0` | Optimus (the integrated GPU drives the screen) |
+| `1` | NVIDIA GPU only (the NVIDIA GPU drives the screen) |
+| `2` | Automatic selection (read only; set it from NitroSense on Windows) |
+
+```bash
+# Check
+cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/gpu_mode
+
+# Set, then reboot
+echo 1 | sudo -S -p '' tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/gpu_mode
 ```
 
 ## 💻 Keyboard Configuration

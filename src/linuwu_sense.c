@@ -178,6 +178,7 @@ enum acer_wmi_predator_v4_oc {
 };
 
  enum acer_wmi_gaming_misc_setting {
+	ACER_WMID_MISC_SETTING_GPU_MODE			= 0x0002,
 	ACER_WMID_MISC_SETTING_OC_1			= 0x0005,
 	ACER_WMID_MISC_SETTING_OC_2			= 0x0007,
 	ACER_WMID_MISC_SETTING_SUPPORTED_PROFILES	= 0x000A,
@@ -4260,6 +4261,40 @@ static acpi_status __init
      return count;
  }
  
+/*
+ * GPU operating mode (the MUX switch): 0 = Optimus, 1 = NVIDIA GPU only, 2 = automatic selection.
+ * The firmware stores the mode + 1 in gaming misc setting 0x02; a change applies after a reboot.
+ */
+static ssize_t predator_gpu_mode_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    u8 value;
+    int err;
+
+    err = WMID_gaming_get_misc_setting(ACER_WMID_MISC_SETTING_GPU_MODE, &value);
+    if (err)
+        return err;
+    if (value < 1 || value > 3)
+        return -EIO;
+    return sysfs_emit(buf, "%u\n", value - 1);
+}
+
+/*
+ * Only Optimus and NVIDIA GPU only are accepted: whether a model also has automatic selection is a
+ * per-model Windows registry setting (dgpu_mode_capability), which the firmware doesn't report.
+ */
+static ssize_t predator_gpu_mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+    u8 mode;
+    int err;
+
+    if (kstrtou8(buf, 10, &mode) || mode > 1)
+        return -EINVAL;
+    err = WMID_gaming_set_misc_setting(ACER_WMID_MISC_SETTING_GPU_MODE, mode + 1);
+    if (err)
+        return err;
+    return count;
+}
+
  /*
   * predator sense attributes
   */
@@ -4270,8 +4305,10 @@ static acpi_status __init
  static struct device_attribute battery_limiter = __ATTR(battery_limiter, 0644, predator_battery_limit_show, predator_battery_limit_store);
  static struct device_attribute fan_speed = __ATTR(fan_speed, 0644, predator_fan_speed_show, predator_fan_speed_store);
  static struct device_attribute lcd_override = __ATTR(lcd_override, 0644, predator_lcd_override_show, predator_lcd_override_store);
+ static struct device_attribute gpu_mode = __ATTR(gpu_mode, 0644, predator_gpu_mode_show, predator_gpu_mode_store);
  static struct attribute *predator_sense_attrs[] = {
      &lcd_override.attr,
+     &gpu_mode.attr,
      &fan_speed.attr,
      &battery_limiter.attr,
      &battery_calibration.attr,
@@ -4293,8 +4330,19 @@ static acpi_status __init
      NULL
  };
  
+/* gpu_mode only exists on laptops whose firmware reports a GPU mode (those with a MUX switch). */
+static umode_t predator_sense_attr_is_visible(struct kobject *kobj, struct attribute *attr, int n)
+{
+    u8 value;
+
+    if (attr == &gpu_mode.attr &&
+        (WMID_gaming_get_misc_setting(ACER_WMID_MISC_SETTING_GPU_MODE, &value) || value < 1 || value > 3))
+        return 0;
+    return attr->mode;
+}
+
  static struct attribute_group preadtor_sense_attr_group = {
-     .name = "predator_sense", .attrs = predator_sense_attrs
+     .name = "predator_sense", .attrs = predator_sense_attrs, .is_visible = predator_sense_attr_is_visible
  };
  
  static struct attribute_group predator_legacy_attr_group = {
@@ -4302,7 +4350,7 @@ static acpi_status __init
  };
  
  static struct attribute_group nitro_sense_v4_attr_group = {
-     .name = "nitro_sense", .attrs = predator_sense_attrs
+     .name = "nitro_sense", .attrs = predator_sense_attrs, .is_visible = predator_sense_attr_is_visible
  };
 
  /*
