@@ -36,6 +36,7 @@
  #include <linux/fs.h>
  #include <linux/units.h>
  #include <linux/unaligned.h>
+ #include <linux/string.h>
  #include <linux/bitfield.h>
  #include <linux/bitmap.h>
  #include <linux/hid.h>
