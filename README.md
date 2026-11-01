@@ -332,6 +332,7 @@ If that prints a path, keyboard RGB on your machine works through HID feature re
 - [Div Acer Manager Max by PXDiv](https://github.com/PXDiv/Div-Acer-Manager-Max)
 - [GUI LinuwuSense by KumarVivek](https://github.com/kumarvivek1752/Linuwu-Sense-GUI/tree/main)
 - [RuSense by r3nv-dev](https://github.com/r3nv-dev/rusense) — Rust TUI + GUI (Tauri)
+- [NitroSense for Linux by abduvaliy-engineer](https://github.com/abduvaliy-engineer/Nitro-Sense) — recreation of Acer's NitroSense (Electron)
 
 ## 🩺 Troubleshooting
 
