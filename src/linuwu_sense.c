@@ -4197,6 +4197,9 @@ static acpi_status __init
      if (quirks->predator_legacy) {
          /* PH315-52: WMI calls work but return values are non-standard, use state tracking */
          return sprintf(buf, "%d\n", ph315_52_backlight_timeout_state);
+     } else if (quirks->nitro_v4 || quirks->nitro_sense) {
+         /* Nitro: bit 19 set means the timeout is active, clear means always on */
+         return sprintf(buf, "%d\n", (result & 0x80000) ? 1 : 0);
      } else {
          /* Newer Predator models */
          return sprintf(buf, "%d\n", result == 0x1E0000080000ULL ? 1 : result == 0x80000 ? 0 : -1);
@@ -4212,7 +4215,17 @@ static acpi_status __init
        if ((val != 0) && (val != 1))
          return -EINVAL;
      pr_info("backlight_timeout set value: %d\n",val);
-     status = WMI_apgeaction_execute_u64(ACER_WMID_SET_FUNCTION,val == 1 ? 0x1E0000088402 : 0x88402, &result);
+     /*
+      * On Nitro (tested on AN16-41), 0x88402 keeps the timeout on with a
+      * zero delay, so the light goes out after 2-3 seconds. Clearing bit 19
+      * (0x8402) turns the timeout off. 0x1E0000088402 is 30 seconds on both.
+      */
+     if (val == 1)
+         status = WMI_apgeaction_execute_u64(ACER_WMID_SET_FUNCTION, 0x1E0000088402, &result);
+     else if (quirks->nitro_v4 || quirks->nitro_sense)
+         status = WMI_apgeaction_execute_u64(ACER_WMID_SET_FUNCTION, 0x8402, &result);
+     else
+         status = WMI_apgeaction_execute_u64(ACER_WMID_SET_FUNCTION, 0x88402, &result);
      if(ACPI_FAILURE(status)){
          pr_err("Error setting backlight_timeout status: %s\n",acpi_format_exception(status));
          return -ENODEV;
