@@ -673,6 +673,18 @@ static struct quirk_entry quirk_acer_nitro = {
  static struct quirk_entry quirk_acer_predator_v4 = {
      .predator_v4 = 1,
  };
+
+ /*
+  * PH16-73: keyboard, light bar and logos are USB HID devices (Sunrex 05AF:667A,
+  * Darfon 0D62:A20A/A00A), not WMI; four_zone_mode writes have no effect, so
+  * four_zone_kb stays off.
+  */
+ static struct quirk_entry quirk_acer_predator_ph16_73 = {
+     .turbo = 1,
+     .cpu_fans = 1,
+     .gpu_fans = 1,
+     .predator_v4 = 1,
+ };
  
  /* This AMW0 laptop has no bluetooth */
  static struct quirk_entry quirk_medion_md_98300 = {
@@ -1128,6 +1140,15 @@ static struct quirk_entry quirk_acer_nitro = {
              DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH16-72"),
          },
          .driver_data = &quirk_acer_predator_v4,
+     },
+     {
+         .callback = dmi_matched,
+         .ident = "Acer Predator PH16-73",
+         .matches = {
+             DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+             DMI_MATCH(DMI_PRODUCT_NAME, "Predator PH16-73"),
+         },
+         .driver_data = &quirk_acer_predator_ph16_73,
      },
      {
          .callback = dmi_matched,
