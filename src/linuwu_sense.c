@@ -4697,9 +4697,7 @@ static acpi_status get_kb_status(struct get_four_zoned_kb_output *out){
              speed = 0;
              direction = 0;
              break;
-         case 0x1:  // Breathing mode: keep speed when the AN515-58 fix is active
-             if (!quirks->an515_58_rgb_fix)
-                 speed = 0;
+         case 0x1:  // Breathing mode: Ignore direction
              direction = 0;
              break;
          case 0x2:  // Neon mode: Ignore red, green, blue, and direction
