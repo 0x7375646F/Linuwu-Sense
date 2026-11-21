@@ -117,7 +117,7 @@ install:
 		if echo "$$model_path" | grep -q "nitro_sense"; then \
 			supported_fields="fan_speed battery_limiter battery_calibration usb_charging"; \
 		else \
-			supported_fields="backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed lcd_override usb_charging"; \
+			supported_fields="backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed lcd_overdrive lcd_override usb_charging"; \
 		fi; \
 		for f in $$supported_fields; do \
 			entry="f /sys/module/$(MODNAME)/drivers/platform:acer-wmi/acer-wmi/$$model_path/$$f 0660 root $(MODNAME)"; \
