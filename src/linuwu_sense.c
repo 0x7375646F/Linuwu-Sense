@@ -4158,7 +4158,7 @@ static acpi_status __init
          return -ENODEV;
      }
      pr_info("lcd overdrive get status: %llu\n",result);
-     return sprintf(buf, "%d\n", result == 0x1000001000000 ? 1 : result == 0x1000000 ? 0 : -1);
+     return sprintf(buf, "%d\n", ((result >> 48) & 0xff) == 1);
  }
  
  static ssize_t predator_lcd_overdrive_store(struct device *dev, struct device_attribute *attr,const char *buf, size_t count){
@@ -4297,16 +4297,34 @@ static acpi_status __init
      NULL
  };
  
+ /* Hide lcd_overdrive when the firmware reports it unsupported (0xff in byte 6) */
+ static umode_t predator_sense_attr_is_visible(struct kobject *kobj, struct attribute *attr, int n){
+     acpi_status status;
+     u64 result;
+
+     if (attr != &lcd_overdrive.attr && attr != &lcd_override.attr)
+         return attr->mode;
+
+     status = WMI_gaming_execute_u64(ACER_WMID_GET_GAMING_PROFILE_METHODID,0x00,&result);
+     if (ACPI_FAILURE(status) || (result & 0xff) || ((result >> 48) & 0xff) == 0xff)
+         return 0;
+
+     return attr->mode;
+ }
+
  static struct attribute_group preadtor_sense_attr_group = {
-     .name = "predator_sense", .attrs = predator_sense_attrs
+     .name = "predator_sense", .attrs = predator_sense_attrs,
+     .is_visible = predator_sense_attr_is_visible
  };
  
  static struct attribute_group predator_legacy_attr_group = {
-     .name = "predator_sense", .attrs = predator_legacy_attrs
+     .name = "predator_sense", .attrs = predator_legacy_attrs,
+     .is_visible = predator_sense_attr_is_visible
  };
  
  static struct attribute_group nitro_sense_v4_attr_group = {
-     .name = "nitro_sense", .attrs = predator_sense_attrs
+     .name = "nitro_sense", .attrs = predator_sense_attrs,
+     .is_visible = predator_sense_attr_is_visible
  };
 
  /*
