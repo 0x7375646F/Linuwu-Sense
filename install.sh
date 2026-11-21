@@ -221,7 +221,7 @@ EOF
         if echo "$model_path" | grep -q "nitro_sense"; then
             local supported_fields="fan_speed battery_limiter battery_calibration usb_charging"
         else
-            local supported_fields="backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed lcd_override usb_charging"
+            local supported_fields="backlight_timeout battery_calibration battery_limiter boot_animation_sound fan_speed lcd_overdrive lcd_override usb_charging"
         fi
         
         for field in $supported_fields; do

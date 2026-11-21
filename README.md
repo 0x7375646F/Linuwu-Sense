@@ -18,7 +18,7 @@ Inspired by [acer-predator-turbo](https://github.com/JafarAkhondali/acer-predato
   - [Battery Limiter](#3-battery-limiter-)
   - [Boot Animation Sound](#4-boot-animation-sound-)
   - [Fan Speed](#5-fan-speed--️)
-  - [LCD Override](#6-lcd-override-️)
+  - [LCD Overdrive](#6-lcd-overdrive-️)
   - [USB Charging](#7-usb-charging-)
   - [Turbo State & OSD Popup](#8-turbo-state-)
 - [Keyboard Configuration](#-keyboard-configuration)
@@ -182,9 +182,9 @@ Example (set CPU to 50 and GPU to 70):
 echo 50,70 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/fan_speed
 ```
 
-### **6. LCD Override 🖥️**
+### **6. LCD Overdrive 🖥️**
 
-Reduces LCD latency and minimizes ghosting.
+Reduces LCD latency and minimizes ghosting. The old name, `lcd_override`, still works.
 
 | Value | Meaning |
 |---|---|
@@ -193,10 +193,10 @@ Reduces LCD latency and minimizes ghosting.
 
 ```bash
 # Check
-cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/lcd_override
+cat /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/lcd_overdrive
 
 # Set
-echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/lcd_override
+echo 1 | sudo tee /sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense/lcd_overdrive
 ```
 
 ### **7. USB Charging ⚡**

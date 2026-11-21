@@ -465,7 +465,7 @@ enum acer_wmi_predator_v4_oc {
          interface->capability |= ACER_CAP_TURBO_OC | ACER_CAP_TURBO_LED
                       | ACER_CAP_TURBO_FAN;
  
-    /* Some acer nitro laptops don't have features like lcd override , boot animation sound so this is used. Think wisely before using any quirks validate your features. */
+    /* Some acer nitro laptops don't have features like lcd overdrive , boot animation sound so this is used. Think wisely before using any quirks validate your features. */
      if (quirks->nitro_sense == 1) {
                 interface->capability |= ACER_CAP_PLATFORM_PROFILE | ACER_CAP_FAN_SPEED_READ | ACER_CAP_NITRO_SENSE;
              } else if (quirks->nitro_sense == 2) {
@@ -4147,21 +4147,21 @@ static acpi_status __init
  }
  
  /*
-  *LCD OVERRIDE CONTROLS
+  *LCD OVERDRIVE CONTROLS
   */
- static ssize_t predator_lcd_override_show(struct device *dev, struct device_attribute *attr,char *buf){
+ static ssize_t predator_lcd_overdrive_show(struct device *dev, struct device_attribute *attr,char *buf){
      acpi_status status;
      u64 result;
      status = WMI_gaming_execute_u64(ACER_WMID_GET_GAMING_PROFILE_METHODID,0x00,&result);
      if(ACPI_FAILURE(status)){
-         pr_err("Error getting lcd override status: %s\n",acpi_format_exception(status));
+         pr_err("Error getting lcd overdrive status: %s\n",acpi_format_exception(status));
          return -ENODEV;
      }
-     pr_info("lcd override get status: %llu\n",result);
+     pr_info("lcd overdrive get status: %llu\n",result);
      return sprintf(buf, "%d\n", result == 0x1000001000000 ? 1 : result == 0x1000000 ? 0 : -1);
  }
  
- static ssize_t predator_lcd_override_store(struct device *dev, struct device_attribute *attr,const char *buf, size_t count){
+ static ssize_t predator_lcd_overdrive_store(struct device *dev, struct device_attribute *attr,const char *buf, size_t count){
      acpi_status status;
      u64 result;
      u8 val;
@@ -4169,13 +4169,13 @@ static acpi_status __init
          return -EINVAL;
        if ((val != 0) && (val != 1))
          return -EINVAL;
-     pr_info("lcd_override set value: %d\n",val);
+     pr_info("lcd_overdrive set value: %d\n",val);
      status = WMI_gaming_execute_u64(ACER_WMID_SET_GAMING_PROFILE_METHODID,val == 1 ? 0x1000000000010 : 0x10, &result);
      if(ACPI_FAILURE(status)){
-         pr_err("Error setting lcd override status: %s\n",acpi_format_exception(status));
+         pr_err("Error setting lcd overdrive status: %s\n",acpi_format_exception(status));
          return -ENODEV;
      }
-     pr_info("lcd override set status: %llu\n",result);
+     pr_info("lcd overdrive set status: %llu\n",result);
      return count;
  }
  
@@ -4269,8 +4269,11 @@ static acpi_status __init
  static struct device_attribute battery_calibration = __ATTR(battery_calibration, 0644, predator_battery_calibration_show, preadtor_battery_calibration_store);
  static struct device_attribute battery_limiter = __ATTR(battery_limiter, 0644, predator_battery_limit_show, predator_battery_limit_store);
  static struct device_attribute fan_speed = __ATTR(fan_speed, 0644, predator_fan_speed_show, predator_fan_speed_store);
- static struct device_attribute lcd_override = __ATTR(lcd_override, 0644, predator_lcd_override_show, predator_lcd_override_store);
+ static struct device_attribute lcd_overdrive = __ATTR(lcd_overdrive, 0644, predator_lcd_overdrive_show, predator_lcd_overdrive_store);
+ /* lcd_override is the old name of lcd_overdrive, kept for existing tools */
+ static struct device_attribute lcd_override = __ATTR(lcd_override, 0644, predator_lcd_overdrive_show, predator_lcd_overdrive_store);
  static struct attribute *predator_sense_attrs[] = {
+     &lcd_overdrive.attr,
      &lcd_override.attr,
      &fan_speed.attr,
      &battery_limiter.attr,
@@ -4285,6 +4288,7 @@ static acpi_status __init
  static struct attribute *predator_legacy_attrs[] = {
      &fan_speed.attr,                 // DONE! 
      &usb_charging.attr,              // DONE!   
+     &lcd_overdrive.attr,             // DONE! 
      &lcd_override.attr,              // DONE! 
      &boot_animation_sound.attr,      // DONE! 
      &backlight_timeout.attr,         // DONE! 

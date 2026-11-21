@@ -7,7 +7,7 @@ This script provides an easy-to-use interface for controlling:
 - Thermal profiles and fan speeds
 - Battery management (limiter, calibration)
 - RGB keyboard lighting (four-zone keyboards)
-- Miscellaneous settings (backlight timeout, boot animation, LCD override, USB charging)
+- Miscellaneous settings (backlight timeout, boot animation, LCD overdrive, USB charging)
 
 Author: Inspired by acer-predator-turbo-and-rgb-keyboard-linux-module
 License: GPL-3.0
@@ -117,9 +117,9 @@ class LinuwuSenseController:
         if boot_animation_sound is not None:
             status['boot_animation_sound'] = boot_animation_sound
         
-        lcd_override = self._read_sysfs('lcd_override')
-        if lcd_override is not None:
-            status['lcd_override'] = lcd_override
+        lcd_overdrive = self._read_sysfs('lcd_overdrive')
+        if lcd_overdrive is not None:
+            status['lcd_overdrive'] = lcd_overdrive
         
         usb_charging = self._read_sysfs('usb_charging')
         if usb_charging is not None:
@@ -161,9 +161,9 @@ class LinuwuSenseController:
         """Enable or disable custom boot animation and sound."""
         return self._write_sysfs('boot_animation_sound', '1' if enabled else '0')
     
-    def set_lcd_override(self, enabled: bool) -> bool:
-        """Enable or disable LCD override (reduces latency and ghosting)."""
-        return self._write_sysfs('lcd_override', '1' if enabled else '0')
+    def set_lcd_overdrive(self, enabled: bool) -> bool:
+        """Enable or disable LCD overdrive (reduces latency and ghosting)."""
+        return self._write_sysfs('lcd_overdrive', '1' if enabled else '0')
     
     def set_usb_charging(self, level: int) -> bool:
         """Set USB charging level (0=disabled, 10/20/30=power until battery reaches that %)."""
@@ -278,8 +278,10 @@ class LinuwuSenseController:
                 if not self.set_boot_animation_sound(profile_data['boot_animation_sound'] == '1'):
                     success = False
             
-            if 'lcd_override' in profile_data:
-                if not self.set_lcd_override(profile_data['lcd_override'] == '1'):
+            # Profiles saved before the rename use 'lcd_override'
+            lcd_overdrive = profile_data.get('lcd_overdrive', profile_data.get('lcd_override'))
+            if lcd_overdrive is not None:
+                if not self.set_lcd_overdrive(lcd_overdrive == '1'):
                     success = False
             
             if 'usb_charging' in profile_data:
@@ -401,10 +403,10 @@ Examples:
                        help='Enable custom boot animation and sound')
     parser.add_argument('--no-boot-animation', action='store_true',
                        help='Disable custom boot animation and sound')
-    parser.add_argument('--lcd-override', action='store_true',
-                       help='Enable LCD override (reduces latency)')
-    parser.add_argument('--no-lcd-override', action='store_true',
-                       help='Disable LCD override')
+    parser.add_argument('--lcd-overdrive', '--lcd-override', action='store_true',
+                       help='Enable LCD overdrive (reduces latency)')
+    parser.add_argument('--no-lcd-overdrive', '--no-lcd-override', action='store_true',
+                       help='Disable LCD overdrive')
     parser.add_argument('--usb-charging', type=int, choices=[0, 10, 20, 30],
                        metavar='LEVEL',
                        help='Set USB charging level (0=disabled, 10/20/30=power until battery reaches that %%)')
@@ -445,8 +447,8 @@ Examples:
         if 'boot_animation_sound' in status:
             print(f"Boot Animation: {'Enabled' if status['boot_animation_sound'] == '1' else 'Disabled'}")
         
-        if 'lcd_override' in status:
-            print(f"LCD Override: {'Enabled' if status['lcd_override'] == '1' else 'Disabled'}")
+        if 'lcd_overdrive' in status:
+            print(f"LCD Overdrive: {'Enabled' if status['lcd_overdrive'] == '1' else 'Disabled'}")
         
         if 'usb_charging' in status:
             print(f"USB Charging: {status['usb_charging']}%")
@@ -557,18 +559,18 @@ Examples:
             print("Failed to disable boot animation")
             sys.exit(1)
     
-    if args.lcd_override:
-        if controller.set_lcd_override(True):
-            print("LCD override enabled")
+    if args.lcd_overdrive:
+        if controller.set_lcd_overdrive(True):
+            print("LCD overdrive enabled")
         else:
-            print("Failed to enable LCD override")
+            print("Failed to enable LCD overdrive")
             sys.exit(1)
     
-    if args.no_lcd_override:
-        if controller.set_lcd_override(False):
-            print("LCD override disabled")
+    if args.no_lcd_overdrive:
+        if controller.set_lcd_overdrive(False):
+            print("LCD overdrive disabled")
         else:
-            print("Failed to disable LCD override")
+            print("Failed to disable LCD overdrive")
             sys.exit(1)
     
     if args.usb_charging is not None:
